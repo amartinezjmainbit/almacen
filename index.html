@@ -639,14 +639,7 @@ input[type="date"].fsel{
       </div>
       <div class="sdiv"></div>
       <div class="slab">Almacén</div>
-      <div class="pill pill-cyan">
-        <span class="pnum" id="sRefac">–</span>
-        <span class="plbl">REFAC</span>
-      </div>
-      <div class="pill pill-green">
-        <span class="pnum" id="sGen">–</span>
-        <span class="plbl">GEN</span>
-      </div>
+      <div id="sAlmacenPills"></div>
       <div class="sdiv"></div>
       <div class="slab">Estatus</div>
       <div class="pill pill-green">
@@ -1183,15 +1176,27 @@ function renderKPIs(d){
 
 /* ── Sidebar uses rawData always (Portafolio = static totals) ── */
 function renderSidebar(d){
-  // Portafolio section always shows FULL dataset totals
   const all = rawData;
   setText('sEntradas', num(new Set(all.map(r=>r.entrada)).size));
   setText('sRegistros',num(all.length));
   setText('sCantidad', num(Math.round(all.reduce((s,r)=>s+r.cantidad,0))));
-  setText('sRefac',    num(all.filter(r=>r.almacen==='REFAC').length));
-  setText('sGen',      num(all.filter(r=>r.almacen==='GEN').length));
   setText('sCompleta', num(all.filter(r=>r.estatus==='COMPLETA').length));
   setText('sPendiente',num(all.filter(r=>r.estatus!=='COMPLETA').length));
+
+  // Almacenes dinámicos — todos los que existan en el archivo
+  const byAlm = {};
+  all.forEach(r=>{ const k=r.almacen||'—'; byAlm[k]=(byAlm[k]||0)+1; });
+  const almColors = ['#38bdf8','#10b981','#a78bfa','#f59e0b','#fb7185','#22d3ee','#818cf8','#f97316'];
+  const container = document.getElementById('sAlmacenPills');
+  if(container){
+    container.innerHTML = Object.entries(byAlm)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([alm,cnt],i)=>`
+        <div class="pill" style="margin-bottom:3px;">
+          <span class="pnum" style="color:${almColors[i%almColors.length]};font-size:${cnt>=1000?'17px':cnt>=100?'20px':'22px'};">${num(cnt)}</span>
+          <span class="plbl">${alm}</span>
+        </div>`).join('');
+  }
 }
 
 /* ── CHART: ALMACÉN ── */
