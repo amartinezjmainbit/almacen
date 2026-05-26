@@ -35,7 +35,7 @@
   --trans:   all 0.3s cubic-bezier(0.25,1,0.5,1);
   --side-w:  160px;
   --right-w: 270px;
-  --topbar-h: 64px;
+  --topbar-h: 72px;
 }
 /* ══ LIGHT MODE ══ */
 [data-theme="light"] {
@@ -125,7 +125,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--t1);
   background:#07102a;
   border-bottom:1px solid rgba(99,102,241,0.28);
   display:flex;align-items:center;padding:0 10px 0 12px;
-  gap:7px;flex-shrink:0;z-index:20;
+  gap:8px;flex-shrink:0;z-index:20;
   transition:background .4s;
   overflow:visible;
 }
@@ -155,10 +155,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--t1);
 .tdate{font-size:8.5px;color:#94a3b8;white-space:nowrap;flex-shrink:0;
   font-family:'JetBrains Mono',monospace;font-weight:500;}
 
-/* Filtros */
-.fg{display:flex;align-items:center;gap:3px;flex-shrink:0;}
-.flbl{font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;
-  letter-spacing:.5px;white-space:nowrap;}
+/* Filtros — etiqueta arriba, selector abajo */
+.fg{display:flex;flex-direction:column;gap:2px;flex-shrink:0;}
+.flbl{font-size:7px;font-weight:700;color:#94a3b8;text-transform:uppercase;
+  letter-spacing:.6px;white-space:nowrap;line-height:1;}
 select.fsel{
   border:1px solid rgba(99,102,241,0.35);border-radius:5px;
   background:rgba(255,255,255,0.06);color:#f1f5f9;
@@ -171,6 +171,15 @@ select.fsel{
 }
 .fsel:focus{border-color:var(--accent);}
 .fsel option{background:#111827;color:#f1f5f9;}
+input.fsel-date{
+  border:1px solid rgba(99,102,241,0.35);border-radius:5px;
+  background:rgba(255,255,255,0.06);color:#f1f5f9;
+  padding:4px 7px;font-family:inherit;font-size:9px;
+  cursor:pointer;outline:none;transition:var(--trans);
+  width:108px;color-scheme:dark;
+}
+input.fsel-date:focus{border-color:var(--accent);}
+[data-theme="light"] input.fsel-date{color-scheme:light;color:var(--t1);}
 
 /* Push right */
 .ml{margin-left:auto;}
@@ -551,7 +560,7 @@ input[type="date"].fsel{
     </div>
     <div class="tbar-sep"></div>
 
-    <!-- Filtros -->
+    <!-- Filtros — etiqueta arriba, selector abajo -->
     <div class="fg">
       <span class="flbl">Almacén</span>
       <select class="fsel" id="fAlmacen"><option value="">Todos</option></select>
@@ -568,7 +577,13 @@ input[type="date"].fsel{
       <span class="flbl">No. Entrada</span>
       <select class="fsel" id="fEntrada"><option value="">Todas</option></select>
     </div>
-    <!-- fDesde y fHasta ocultos — se manejan desde el App Switcher -->
+    <div class="fg">
+      <span class="flbl">Fecha</span>
+      <input type="date" class="fsel-date" id="fFechaVis"
+        title="Filtrar por día"
+        onchange="setFechaDia(this.value)"/>
+    </div>
+    <!-- Ocultos sincronizados -->
     <input type="date" id="fDesde" style="display:none;" onchange="if(rawData.length)rebuildAll()"/>
     <input type="date" id="fHasta" style="display:none;" onchange="if(rawData.length)rebuildAll()"/>
 
@@ -1446,15 +1461,16 @@ function renderTimeline(d){
         if(!elements.length) return;
         const i = elements[0].index;
         const fecha = dates[i];
-        // Filter all data to this date
         const fd=document.getElementById('fDesde');
         const fh=document.getElementById('fHasta');
         const fdv=document.getElementById('fDesdeVis');
         const fhv=document.getElementById('fHastaVis');
+        const ffv=document.getElementById('fFechaVis');
         if(fd) fd.value=fecha;
         if(fh) fh.value=fecha;
         if(fdv) fdv.value=fecha;
         if(fhv) fhv.value=fecha;
+        if(ffv) ffv.value=fecha;
         updateFechaBadge();
         rebuildAll();
       },
@@ -1635,7 +1651,7 @@ function syncFecha(tipo, val){
 }
 
 function clearFecha(){
-  ['fDesde','fHasta','fDesdeVis','fHastaVis'].forEach(id=>{
+  ['fDesde','fHasta','fDesdeVis','fHastaVis','fFechaVis'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   updateFechaBadge();
@@ -1660,9 +1676,24 @@ function updateFechaBadge(){
   }
 }
 
+/* ════ FECHA DÍA — filtro rápido por día desde topbar ════ */
+function setFechaDia(val){
+  const fd=document.getElementById('fDesde');
+  const fh=document.getElementById('fHasta');
+  const fdv=document.getElementById('fDesdeVis');
+  const fhv=document.getElementById('fHastaVis');
+  if(fd) fd.value=val;
+  if(fh) fh.value=val;
+  if(fdv) fdv.value=val;
+  if(fhv) fhv.value=val;
+  updateFechaBadge();
+  if(rawData.length) rebuildAll();
+}
+
 /* ════ RESET — also clears fecha ════ */
 function resetFilters(){
   ['fAlmacen','fProveedor','fProyecto','fEntrada'].forEach(id=>document.getElementById(id).value='');
+  const fv=document.getElementById('fFechaVis'); if(fv) fv.value='';
   clearFecha();
 }
 function renderRight(d){
