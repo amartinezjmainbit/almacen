@@ -434,6 +434,167 @@ input[type="date"].fsel{
 .det-item-desc{font-size:9px;color:#94a3b8;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .det-item-qty{font-size:10px;font-weight:700;color:#10b981;margin-left:8px;white-space:nowrap;font-family:'JetBrains Mono',monospace;}
 
+
+/* ══════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — ≤768px
+   Detección automática, sin botón
+══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Variables móvil */
+  :root {
+    --topbar-h: 56px;
+    --side-w:   0px;
+    --right-w:  0px;
+  }
+
+  /* ── APP layout: columna en móvil ── */
+  #app{ height:auto; overflow:auto; }
+
+  /* ── TOPBAR móvil ── */
+  #topbar{
+    height:var(--topbar-h);
+    padding:0 10px;
+    gap:8px;
+    flex-wrap:nowrap;
+    overflow:hidden;
+    position:sticky;top:0;z-index:100;
+  }
+  /* Ocultar título largo, fecha, slider, algunos botones */
+  .ttitle-wrap .tsub{ display:none; }
+  .ttitle{ font-size:10px; }
+  .tbar-sep{ display:none; }
+  /* Ocultar filtros en topbar — van en panel móvil */
+  .fg{ display:none; }
+  /* Ocultar Tema y Archivo en móvil */
+  .tbtn:not(.reset-btn):not(.pri){ display:none; }
+  /* slider oculto */
+  #fontSlider, #fontSlider ~ span { display:none; }
+  /* Solo mostrar: app-switcher, logo+título, reset, reporte */
+  .app-switcher-wrap{ flex-shrink:0; }
+  .tlogo img{ height:26px; padding:1px 6px; }
+  .tbtn.reset-btn{ padding:4px 8px; font-size:8px; }
+  .tbtn.pri{ padding:4px 10px; font-size:8px; }
+
+  /* ── BODY: columna ── */
+  #body{ flex-direction:column; overflow:visible; height:auto; }
+
+  /* ── SIDEBAR: oculto en móvil ── */
+  #sidebar{ display:none; }
+
+  /* ── MAIN: ancho completo ── */
+  #main{ flex-direction:column; overflow:visible; width:100%; }
+  #scroll{
+    overflow:visible;
+    padding:8px;
+    gap:8px;
+    width:100%;
+  }
+
+  /* ── PANEL DERECHO: oculto ── */
+  #right{ display:none; }
+
+  /* ── FILTROS MÓVIL — panel colapsable debajo del topbar ── */
+  #mobileFilters{
+    display:flex !important;
+    flex-wrap:wrap;
+    gap:6px;
+    padding:8px 10px;
+    background:var(--bg2);
+    border-bottom:1px solid var(--border);
+    position:sticky;
+    top:var(--topbar-h);
+    z-index:90;
+  }
+  .mfg{
+    display:flex;flex-direction:column;gap:2px;flex:1;min-width:calc(50% - 6px);
+  }
+  .mfg .flbl{ font-size:7px; }
+  .mfg select, .mfg input{
+    width:100%;font-size:10px;padding:5px 7px;
+    border:1px solid rgba(99,102,241,0.35);border-radius:6px;
+    background:rgba(255,255,255,0.06);color:var(--t1);
+    font-family:inherit;outline:none;
+    appearance:none;-webkit-appearance:none;
+    color-scheme:dark;
+  }
+  [data-theme="light"] .mfg select,
+  [data-theme="light"] .mfg input{ color-scheme:light; color:var(--t1); }
+
+  /* ── KPI ROW: 2 columnas en móvil ── */
+  #krow{
+    display:grid !important;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+  }
+  .kcard{ padding:10px 12px; }
+  .kval{ font-size:22px; }
+  .klbl{ font-size:7.5px; }
+
+  /* ── Gráficas: full width ── */
+  .r2{ flex-direction:column; }
+  .r2 > *{ flex:none; width:100%; }
+
+  /* ── Ocultar tabla y donut en móvil ── */
+  .card:has(#tableBody){ display:none; }
+  #chartsRow2{ display:none; }
+
+  /* ── Cards ── */
+  .card{ border-radius:10px; padding:12px 13px; }
+  .ctitle{ font-size:10px; }
+
+  /* ── Timeline más alto para mejor lectura ── */
+  #secTimeline .card > div[style*="height:200px"]{ height:180px; }
+
+  /* ── App menu fijo en móvil ── */
+  #appMenu{
+    width:calc(100vw - 24px);
+    left:12px;
+    max-height:80vh;
+    overflow-y:auto;
+  }
+
+  /* ── Drawer full screen en móvil ── */
+  #detailDrawer{
+    width:100vw;
+    right:-100vw;
+  }
+  #detailDrawer.open{ right:0; }
+
+  /* ── Upload screen móvil ── */
+  .ubox{ padding:1.6rem 1.4rem; }
+  .utitle{ font-size:1.1rem; }
+
+  /* ── Ocultar Portafolio label y portafolio section (sidebar oculto) ── */
+  #sAlmacenPills{ display:none; }
+}
+
+/* ── Mini KPI strip en móvil — portafolio compacto ── */
+@media (max-width: 768px) {
+  #mobileKpiStrip{
+    display:flex !important;
+    gap:6px;
+    padding:6px 10px;
+    background:var(--sidebar);
+    border-bottom:1px solid var(--border);
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #mobileKpiStrip::-webkit-scrollbar{ display:none; }
+  .mkpi{
+    display:flex;flex-direction:column;align-items:center;
+    background:var(--card);border:1px solid var(--border);
+    border-radius:8px;padding:6px 10px;flex-shrink:0;min-width:70px;
+  }
+  .mkpi-val{ font-size:14px;font-weight:800;font-family:"JetBrains Mono",monospace;color:var(--warn); }
+  .mkpi-lbl{ font-size:7px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-top:1px; }
+}
+/* En desktop: ocultar elementos móvil */
+@media (min-width:769px){
+  #mobileFilters{ display:none !important; }
+  #mobileKpiStrip{ display:none !important; }
+}
+
 </style>
 </head>
 <body>
@@ -615,6 +776,50 @@ input[type="date"].fsel{
         Reporte
       </button>
     </div>
+  </div>
+
+
+  <!-- ══ FILTROS MÓVIL ══ -->
+  <div id="mobileFilters" style="display:none;">
+    <div class="mfg">
+      <span class="flbl">Almacén</span>
+      <select id="mfAlmacen" onchange="syncMobileFilter('fAlmacen',this.value)">
+        <option value="">Todos</option>
+      </select>
+    </div>
+    <div class="mfg">
+      <span class="flbl">Proveedor</span>
+      <select id="mfProveedor" onchange="syncMobileFilter('fProveedor',this.value)">
+        <option value="">Todos</option>
+      </select>
+    </div>
+    <div class="mfg">
+      <span class="flbl">Proyecto</span>
+      <select id="mfProyecto" onchange="syncMobileFilter('fProyecto',this.value)">
+        <option value="">Todos</option>
+      </select>
+    </div>
+    <div class="mfg">
+      <span class="flbl">Fecha</span>
+      <input type="date" id="mfFecha" onchange="setFechaDia(this.value)" style="color-scheme:dark;"/>
+    </div>
+  </div>
+
+  <!-- ══ KPI STRIP MÓVIL — Portafolio compacto ══ -->
+  <div id="mobileKpiStrip" style="display:none;">
+    <div class="mkpi">
+      <span class="mkpi-val" id="ms_entradas">—</span>
+      <span class="mkpi-lbl">Entradas</span>
+    </div>
+    <div class="mkpi">
+      <span class="mkpi-val" id="ms_registros" style="color:#38bdf8;">—</span>
+      <span class="mkpi-lbl">Registros</span>
+    </div>
+    <div class="mkpi">
+      <span class="mkpi-val" id="ms_unidades" style="color:#10b981;">—</span>
+      <span class="mkpi-lbl">Unidades</span>
+    </div>
+    <div class="mkpi" id="ms_almacenes_wrap"></div>
   </div>
 
   <!-- BODY -->
@@ -1043,6 +1248,7 @@ function handleFile(file){
       if(fnameEl) fnameEl.textContent = display || shortName.substring(0,32);
 
       fillFilters();
+      fillMobileFilters();
       rebuildAll();
       document.getElementById('uploadScreen').classList.add('hidden');
       document.getElementById('app').classList.add('visible');
@@ -1163,6 +1369,7 @@ function rebuildAll(){
   renderProveedores(data);
   renderTable(data);
   renderRight(data);
+  updateMobileUI(data);
 }
 
 /* ── KPIs ── */
@@ -1527,17 +1734,7 @@ let drawerData   = [];
 let _drawerCache = 0; // tracks rawData.length to know if cache is stale
 let _drawerTimer = null;
 
-function openDrawer(){
-  // Only re-group if rawData changed (cache by length)
-  if(!drawerData.length || _drawerCache !== rawData.length){
-    drawerData   = groupByEntrada(rawData);
-    _drawerCache = rawData.length;
-  }
-  document.getElementById('drawerSearch').value='';
-  renderDrawerList(drawerData);
-  document.getElementById('drawerOverlay').style.display='block';
-  document.getElementById('detailDrawer').style.right='0';
-}
+/* openDrawer defined above with mobile support */
 
 function openDrawerForEntry(entradaNum){
   openDrawer();
@@ -1796,7 +1993,79 @@ function updateFechaBadge(){
   }
 }
 
-/* ════ FECHA DÍA — filtro rápido por día desde topbar ════ */
+/* ════ MOBILE — sync filtros y KPI strip ════ */
+const isMobile = () => window.innerWidth <= 768;
+
+function syncMobileFilter(targetId, val){
+  const el = document.getElementById(targetId);
+  if(el) el.value = val;
+  if(rawData.length) rebuildAll();
+}
+
+function updateMobileUI(data){
+  if(!isMobile()) return;
+  // KPI strip — portafolio compacto con rawData
+  const all = rawData;
+  const msE  = document.getElementById('ms_entradas');
+  const msR  = document.getElementById('ms_registros');
+  const msU  = document.getElementById('ms_unidades');
+  const msAW = document.getElementById('ms_almacenes_wrap');
+  if(msE) msE.textContent = num(new Set(all.map(r=>r.entrada)).size);
+  if(msR) msR.textContent = num(all.length);
+  if(msU) msU.textContent = num(Math.round(all.reduce((s,r)=>s+r.cantidad,0)));
+  // Almacenes dinámicos en strip
+  if(msAW){
+    const byA={};
+    all.forEach(r=>{ const k=r.almacen||'—'; byA[k]=(byA[k]||0)+1; });
+    const colors=['#38bdf8','#10b981','#a78bfa','#f59e0b','#fb7185'];
+    msAW.parentElement.innerHTML = Object.entries(byA)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([alm,cnt],i)=>`
+        <div class="mkpi">
+          <span class="mkpi-val" style="color:${colors[i%colors.length]};">${num(cnt)}</span>
+          <span class="mkpi-lbl">${alm}</span>
+        </div>`).join('');
+  }
+  // Sync mobile filter selects values from desktop
+  ['Almacen','Proveedor','Proyecto'].forEach(f=>{
+    const mf = document.getElementById('mf'+f);
+    const df = document.getElementById('f'+f);
+    if(mf && df) mf.value = df.value;
+  });
+  // Sync fecha
+  const mfF = document.getElementById('mfFecha');
+  const dfF = document.getElementById('fFechaVis');
+  if(mfF && dfF) mfF.value = dfF.value;
+}
+
+function fillMobileFilters(){
+  // Populate mobile filter selects with same options as desktop
+  const pairs = [['mfAlmacen','fAlmacen'],['mfProveedor','fProveedor'],['mfProyecto','fProyecto']];
+  pairs.forEach(([mId,dId])=>{
+    const mSel=document.getElementById(mId);
+    const dSel=document.getElementById(dId);
+    if(mSel && dSel) mSel.innerHTML = dSel.innerHTML;
+  });
+}
+
+/* ── Fix drawer width on mobile ── */
+function openDrawer(){
+  if(!drawerData.length || _drawerCache !== rawData.length){
+    drawerData   = groupByEntrada(rawData);
+    _drawerCache = rawData.length;
+  }
+  document.getElementById('drawerSearch').value='';
+  renderDrawerList(drawerData);
+  document.getElementById('drawerOverlay').style.display='block';
+  const drawer = document.getElementById('detailDrawer');
+  if(isMobile()){
+    drawer.style.width  = '100vw';
+    drawer.style.right  = '0';
+  } else {
+    drawer.style.width  = '460px';
+    drawer.style.right  = '0';
+  }
+}
 function setFechaDia(val){
   const fd=document.getElementById('fDesde');
   const fh=document.getElementById('fHasta');
