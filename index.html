@@ -1853,25 +1853,6 @@ function renderDrawerList(entries, autoSelectEntrada=null, query=''){
           <div class="det-field"><label>Empresa</label><span style="color:var(--info);">${e.empresa||'—'}</span></div>
           <div class="det-field"><label>Fecha</label><span>${fechaFmt(e.fecha)}</span></div>
           <div class="det-field"><label>Artículos</label><span style="color:var(--success);">${e.items.length}</span></div>
-          ${e.pedido ? `<div class="det-field" style="grid-column:1/-1;">
-            <label>Pedido / Reporte</label>
-            <div style="margin-top:2px;">
-              <span id="ped_${e.entrada}_short" style="color:#38bdf8;font-size:10px;line-height:1.5;">
-                ${e.pedido.length>120 ? e.pedido.slice(0,120)+'…' : e.pedido}
-              </span>
-              ${e.pedido.length>120 ? `
-                <span id="ped_${e.entrada}_full" style="display:none;color:#38bdf8;font-size:10px;line-height:1.5;">${e.pedido}</span>
-                <button onclick="event.stopPropagation();
-                  document.getElementById('ped_${e.entrada}_short').style.display=
-                    document.getElementById('ped_${e.entrada}_short').style.display==='none'?'':'none';
-                  document.getElementById('ped_${e.entrada}_full').style.display=
-                    document.getElementById('ped_${e.entrada}_full').style.display==='none'?'':'none';
-                  this.textContent=this.textContent==='Ver más'?'Ver menos':'Ver más';"
-                  style="margin-left:6px;background:none;border:none;color:#6366f1;font-size:9px;
-                    font-weight:700;cursor:pointer;padding:0;font-family:inherit;">Ver más</button>
-              ` : ''}
-            </div>
-          </div>` : ''}
         </div>
         ${(e.textoLibre||e.comentario) ? `
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
@@ -1895,9 +1876,10 @@ function renderDrawerList(entries, autoSelectEntrada=null, query=''){
           ${e.items.map((it,itIdx)=>{
             const isMatch = query && it.desc.toLowerCase().includes(query.toLowerCase());
             const pedidoId = `ped_info_${e.entrada}_${itIdx}`;
-            const itemPedido = it.pedido || e.pedido; // item-level first, fallback to entry-level
+            // Solo mostrar pedido del artículo que realmente lo tiene (it.pedido propio, no heredado)
+            const ownPedido = it.pedido || '';
             return `<div class="det-item" style="${isMatch?'background:rgba(99,102,241,0.08);border-radius:5px;padding:5px 6px;margin:-2px -6px;':''}">
-              <div style="flex:1;min-width:0;${itemPedido?'cursor:pointer;':''}" ${itemPedido?`onclick="event.stopPropagation();togglePedidoInfo('${pedidoId}')"`:''}">
+              <div style="flex:1;min-width:0;${ownPedido?'cursor:pointer;':''}" ${ownPedido?`onclick="event.stopPropagation();togglePedidoInfo('${pedidoId}')"`:''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                   <div style="flex:1;min-width:0;">
                     <div class="det-item-desc" title="${it.desc}">${hl(it.desc||'—', query)}</div>
@@ -1905,15 +1887,15 @@ function renderDrawerList(entries, autoSelectEntrada=null, query=''){
                   </div>
                   <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                     <div class="det-item-qty">×${num(it.cantidad)}</div>
-                    ${itemPedido ? `<svg id="${pedidoId}_ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>` : ''}
+                    ${ownPedido ? `<svg id="${pedidoId}_ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s;"><polyline points="6 9 12 15 18 9"/></svg>` : ''}
                   </div>
                 </div>
-                ${itemPedido ? `
+                ${ownPedido ? `
                 <div id="${pedidoId}" style="display:none;margin-top:8px;background:rgba(99,102,241,0.08);
                   border-left:2px solid #6366f1;border-radius:0 6px 6px 0;padding:8px 10px;">
                   <div style="font-size:7px;font-weight:700;color:#475569;text-transform:uppercase;
                     letter-spacing:.5px;margin-bottom:4px;">📋 Pedido / Reporte</div>
-                  <div style="font-size:9.5px;color:#c7d2fe;line-height:1.6;">${itemPedido}</div>
+                  <div style="font-size:9.5px;color:#c7d2fe;line-height:1.6;">${ownPedido}</div>
                 </div>` : ''}
               </div>
             </div>`;
