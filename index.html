@@ -595,6 +595,166 @@ input[type="date"].fsel{
   #mobileKpiStrip{ display:none !important; }
 }
 
+
+/* ══════════════════════════════════════
+   CHAT — Asistente de Almacén
+══════════════════════════════════════ */
+#chatBtn{
+  position:fixed;bottom:24px;right:24px;z-index:800;
+  width:52px;height:52px;border-radius:50%;
+  background:linear-gradient(135deg,#6366f1,#818cf8);
+  border:none;cursor:pointer;
+  box-shadow:0 4px 20px rgba(99,102,241,0.5);
+  display:flex;align-items:center;justify-content:center;
+  transition:all .3s;color:#fff;
+}
+#chatBtn:hover{transform:scale(1.1);box-shadow:0 6px 28px rgba(99,102,241,0.65);}
+#chatBtn svg{width:24px;height:24px;}
+/* Badge notificación */
+#chatBadge{
+  position:absolute;top:-3px;right:-3px;
+  background:#ef4444;color:#fff;font-size:9px;font-weight:700;
+  width:16px;height:16px;border-radius:50%;
+  display:none;align-items:center;justify-content:center;
+}
+
+#chatPanel{
+  position:fixed;bottom:90px;right:24px;z-index:800;
+  width:380px;height:560px;
+  background:#0d1631;border:1px solid #2a3f5f;
+  border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,0.6);
+  display:none;flex-direction:column;overflow:hidden;
+  animation:chatSlideUp .3s ease;
+}
+@keyframes chatSlideUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+
+/* Header chat */
+#chatHeader{
+  background:linear-gradient(135deg,#071526 0%,#0d2d5e 100%);
+  padding:14px 16px;display:flex;align-items:center;
+  justify-content:space-between;flex-shrink:0;
+  border-bottom:1px solid #1e3050;
+}
+.chat-title{
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;font-weight:800;color:#f1f5f9;
+  text-transform:uppercase;letter-spacing:.5px;
+}
+.chat-dot{
+  width:8px;height:8px;border-radius:50%;background:#10b981;
+  box-shadow:0 0 6px #10b981;animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+#chatClose{
+  background:rgba(255,255,255,0.08);border:1px solid #2a3f5f;
+  border-radius:6px;color:#94a3b8;width:26px;height:26px;
+  cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+#chatClose:hover{color:#f1f5f9;border-color:#6366f1;}
+
+/* API Key input */
+#chatApiSection{
+  padding:12px 14px;border-bottom:1px solid #1e3050;flex-shrink:0;
+  background:rgba(0,0,0,0.2);
+}
+.api-label{font-size:7.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
+.api-row{display:flex;gap:6px;align-items:center;}
+#chatApiKey{
+  flex:1;background:#111827;border:1px solid #2a3f5f;border-radius:6px;
+  padding:6px 10px;color:#f1f5f9;font-size:9.5px;font-family:"JetBrains Mono",monospace;
+  outline:none;transition:border-color .2s;
+}
+#chatApiKey:focus{border-color:#6366f1;}
+#chatApiKey::placeholder{color:#334155;}
+#chatApiSave{
+  background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.4);
+  border-radius:6px;color:#818cf8;padding:6px 10px;font-size:9px;font-weight:700;
+  cursor:pointer;white-space:nowrap;font-family:inherit;transition:all .2s;
+}
+#chatApiSave:hover{background:rgba(99,102,241,0.35);}
+.api-ok{font-size:8.5px;color:#10b981;margin-top:3px;display:none;}
+
+/* Mensajes */
+#chatMessages{
+  flex:1;overflow-y:auto;padding:12px 14px;
+  display:flex;flex-direction:column;gap:10px;
+}
+#chatMessages::-webkit-scrollbar{width:3px;}
+#chatMessages::-webkit-scrollbar-thumb{background:#2a3f5f;border-radius:2px;}
+
+.msg{display:flex;flex-direction:column;gap:3px;max-width:85%;}
+.msg.user{align-self:flex-end;align-items:flex-end;}
+.msg.bot{align-self:flex-start;align-items:flex-start;}
+.msg-bubble{
+  padding:9px 12px;border-radius:12px;font-size:11px;line-height:1.55;
+  word-break:break-word;
+}
+.msg.user .msg-bubble{
+  background:linear-gradient(135deg,#4f46e5,#6366f1);
+  color:#fff;border-radius:12px 12px 3px 12px;
+}
+.msg.bot .msg-bubble{
+  background:#1a2436;border:1px solid #2a3f5f;
+  color:#cbd5e1;border-radius:12px 12px 12px 3px;
+}
+.msg-time{font-size:8px;color:#475569;}
+
+/* Typing indicator */
+.typing-bubble{
+  background:#1a2436;border:1px solid #2a3f5f;
+  border-radius:12px 12px 12px 3px;
+  padding:10px 14px;display:flex;gap:4px;align-items:center;
+}
+.typing-dot{
+  width:6px;height:6px;border-radius:50%;background:#6366f1;
+  animation:typing .8s infinite;
+}
+.typing-dot:nth-child(2){animation-delay:.15s;}
+.typing-dot:nth-child(3){animation-delay:.3s;}
+@keyframes typing{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-5px);}}
+
+/* Input área */
+#chatInputArea{
+  padding:10px 12px;border-top:1px solid #1e3050;flex-shrink:0;
+  background:rgba(0,0,0,0.15);
+}
+/* Sugerencias */
+#chatSuggestions{
+  display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;
+}
+.sug-btn{
+  background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);
+  border-radius:20px;padding:3px 9px;font-size:8.5px;color:#818cf8;
+  cursor:pointer;font-family:inherit;transition:all .2s;white-space:nowrap;
+}
+.sug-btn:hover{background:rgba(99,102,241,0.25);}
+
+.chat-input-row{display:flex;gap:7px;align-items:flex-end;}
+#chatInput{
+  flex:1;background:#111827;border:1px solid #2a3f5f;border-radius:10px;
+  padding:8px 12px;color:#f1f5f9;font-size:11px;font-family:inherit;
+  outline:none;resize:none;min-height:38px;max-height:100px;
+  transition:border-color .2s;line-height:1.4;
+}
+#chatInput:focus{border-color:#6366f1;}
+#chatInput::placeholder{color:#334155;}
+#chatSend{
+  background:linear-gradient(135deg,#4f46e5,#6366f1);
+  border:none;border-radius:10px;width:38px;height:38px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;color:#fff;
+}
+#chatSend:hover{opacity:.85;transform:scale(1.05);}
+#chatSend:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+#chatSend svg{width:16px;height:16px;}
+
+/* Mobile chat */
+@media(max-width:768px){
+  #chatPanel{width:calc(100vw - 20px);right:10px;bottom:80px;height:70vh;}
+  #chatBtn{bottom:16px;right:16px;width:46px;height:46px;}
+}
+
 </style>
 </head>
 <body>
@@ -1249,6 +1409,7 @@ function handleFile(file){
 
       fillFilters();
       fillMobileFilters();
+      buildSearchIndex(); // índice para chat
       rebuildAll();
       document.getElementById('uploadScreen').classList.add('hidden');
       document.getElementById('app').classList.add('visible');
@@ -1975,7 +2136,303 @@ function updateFechaBadge(){
   }
 }
 
-/* ════ MOBILE — sync filtros y KPI strip ════ */
+/* ════════════════════════════════════════════════
+   CHAT — Asistente de Almacén con Claude API
+════════════════════════════════════════════════ */
+let _chatApiKey   = ''; // ya no se usa — proxy maneja la key
+let _chatOpen     = false;
+let _chatHistory  = [];
+let _chatReady    = true; // siempre listo — la key está en el Worker
+
+function toggleChat(){
+  _chatOpen = !_chatOpen;
+  const panel = document.getElementById('chatPanel');
+  panel.style.display = _chatOpen ? 'flex' : 'none';
+  // Ocultar badge al abrir
+  if(_chatOpen){
+    document.getElementById('chatBadge').style.display='none';
+    document.getElementById('chatInput').focus();
+  }
+}
+
+function saveApiKey(){
+  const val = document.getElementById('chatApiKey').value.trim();
+  if(!val.startsWith('sk-ant-')){
+    alert('La API Key debe empezar con sk-ant-...');
+    return;
+  }
+  _chatApiKey  = val;
+  _chatReady   = true;
+  const okEl   = document.getElementById('apiOk');
+  okEl.style.display = 'block';
+  document.getElementById('chatApiKey').value = '••••••••••••••••••••';
+  // Ocultar sección API después de 2s
+  setTimeout(()=>{
+    document.getElementById('chatApiSection').style.maxHeight='28px';
+    document.getElementById('chatApiSection').style.overflow='hidden';
+  }, 2000);
+}
+
+/* ══════════════════════════════════════════════════
+   SMART CONTEXT — extrae keywords y filtra datos
+   relevantes antes de llamar a la API
+══════════════════════════════════════════════════ */
+
+/* Índice global — se construye una sola vez al cargar datos */
+let _searchIndex = null;
+
+function buildSearchIndex(){
+  if(!rawData.length) return;
+  _searchIndex = rawData.map(r=>({
+    entrada:  r.entrada,
+    fecha:    r.fecha,
+    almacen:  r.almacen,
+    estatus:  r.estatus,
+    desc:     r.desc.toLowerCase(),
+    parte:    r.parte.toLowerCase(),
+    proveedor:r.proveedor.toLowerCase(),
+    proyecto: r.proyecto.toLowerCase(),
+    oc:       r.oc,
+    empresa:  r.empresa.toLowerCase(),
+    cantidad: r.cantidad,
+    // Original para mostrar
+    _r: r
+  }));
+}
+
+function smartSearch(query){
+  if(!_searchIndex) buildSearchIndex();
+  if(!_searchIndex) return [];
+
+  // Extraer palabras clave (ignorar stop words)
+  const stop = new Set(['el','la','los','las','de','del','en','que','hay','me','un','una',
+    'es','si','ya','fue','con','por','para','como','qué','cuál','cuáles','cuántos',
+    'cuántas','dime','dame','muéstrame','tiene','tienen','llegó','llegaron']);
+  const words = query.toLowerCase()
+    .replace(/[¿?¡!.,;:]/g,'')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stop.has(w));
+
+  if(!words.length) return _searchIndex.map(r=>r._r);
+
+  // Score cada registro
+  const scored = _searchIndex.map(r=>{
+    let score = 0;
+    words.forEach(w=>{
+      if(r.desc.includes(w))      score += 10;
+      if(r.proveedor.includes(w)) score += 8;
+      if(r.proyecto.includes(w))  score += 7;
+      if(r.almacen.includes(w))   score += 6;
+      if(r.empresa.includes(w))   score += 5;
+      if(r.entrada.includes(w))   score += 9;
+      if(r.fecha && r.fecha.includes(w)) score += 8;
+      if(r.parte.includes(w))     score += 4;
+    });
+    return {r:r._r, score};
+  }).filter(x=>x.score>0)
+    .sort((a,b)=>b.score-a.score);
+
+  // Si hay resultados relevantes, devolver top 80
+  // Si no hay nada relevante, devolver resumen general
+  return scored.length ? scored.slice(0,80).map(x=>x.r) : [];
+}
+
+function buildDataContext(question){
+  if(!rawData.length) return 'No hay datos cargados.';
+  const all = rawData;
+
+  // ── Resumen global siempre presente ──
+  const entradas  = new Set(all.map(r=>r.entrada)).size;
+  const fechas    = [...new Set(all.map(r=>r.fecha).filter(Boolean))].sort();
+  const byAlm={}, byProv={}, byProj={};
+  all.forEach(r=>{
+    const k=r.almacen||'—'; byAlm[k]=(byAlm[k]||0)+1;
+    if(r.proveedor) byProv[r.proveedor]=(byProv[r.proveedor]||0)+1;
+    if(r.proyecto)  byProj[r.proyecto] =(byProj[r.proyecto]||0)+r.cantidad;
+  });
+  const totalUds = Math.round(all.reduce((s,r)=>s+r.cantidad,0));
+
+  const almStr  = Object.entries(byAlm).sort((a,b)=>b[1]-a[1])
+    .map(([a,n])=>`${a}:${n}reg`).join(', ');
+  const provStr = Object.entries(byProv).sort((a,b)=>b[1]-a[1]).slice(0,15)
+    .map(([p,n])=>`${p}(${n})`).join(', ');
+  const projStr = Object.entries(byProj).sort((a,b)=>b[1]-a[1]).slice(0,10)
+    .map(([p,n])=>`${p}:${Math.round(n)}uds`).join(', ');
+
+  const globalSummary = `=== RESUMEN GLOBAL ===
+Archivo: ${document.getElementById('tFname')?.textContent||'—'}
+Período: ${fechas[0]||'?'} → ${fechas[fechas.length-1]||'?'}
+Entradas únicas: ${entradas} | Registros: ${all.length} | Unidades totales: ${totalUds}
+Por almacén: ${almStr}
+Top proveedores: ${provStr}
+Top proyectos (uds): ${projStr}
+Fechas disponibles: ${fechas.join(', ')}`;
+
+  // ── Búsqueda inteligente por pregunta ──
+  const relevant = smartSearch(question);
+
+  let detailSection = '';
+  if(relevant.length){
+    // Agrupar por entrada para compactar
+    const byEnt = {};
+    relevant.forEach(r=>{
+      if(!byEnt[r.entrada]) byEnt[r.entrada]={
+        entrada:r.entrada, fecha:r.fecha, almacen:r.almacen,
+        estatus:r.estatus, proveedor:r.proveedor, proyecto:r.proyecto,
+        empresa:r.empresa, oc:r.oc, items:[], cantidad:0
+      };
+      byEnt[r.entrada].items.push(r.desc+(r.parte?` [${r.parte}]`:'')+` x${r.cantidad}`);
+      byEnt[r.entrada].cantidad += r.cantidad;
+    });
+
+    const rows = Object.values(byEnt).slice(0,50).map(e=>
+      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.estatus}|${e.proveedor}|${e.proyecto}|${Math.round(e.cantidad)}uds|${e.items.join('; ')}`
+    ).join('\n');
+
+    detailSection = `\n\n=== REGISTROS RELEVANTES PARA TU PREGUNTA (${Object.keys(byEnt).length} entradas) ===
+Formato: #Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|Unidades|Artículos
+${rows}`;
+  } else {
+    // Sin coincidencias específicas → mandar todas las entradas compactas
+    const byEnt = {};
+    all.forEach(r=>{
+      if(!byEnt[r.entrada]) byEnt[r.entrada]={
+        entrada:r.entrada,fecha:r.fecha,almacen:r.almacen,
+        proveedor:r.proveedor,proyecto:r.proyecto,items:[],cantidad:0
+      };
+      byEnt[r.entrada].items.push(r.desc);
+      byEnt[r.entrada].cantidad+=r.cantidad;
+    });
+    const rows = Object.values(byEnt).map(e=>
+      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.proveedor}|${Math.round(e.cantidad)}uds|${[...new Set(e.items)].slice(0,3).join('; ')}`
+    ).join('\n');
+    detailSection = `\n\n=== TODAS LAS ENTRADAS (resumen compacto) ===
+${rows}`;
+  }
+
+  return globalSummary + detailSection;
+}
+
+/* ── Enviar mensaje ── */
+async function sendChat(){
+  if(!rawData.length){
+    appendMsg('bot','📂 Primero carga tu archivo Excel para poder consultar los datos.');
+    return;
+  }
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if(!q) return;
+
+  input.value='';
+  input.style.height='auto';
+  document.getElementById('chatSend').disabled=true;
+
+  // Agregar mensaje usuario
+  appendMsg('user', q);
+
+  // Agregar a historial
+  _chatHistory.push({role:'user', content:q});
+
+  // Typing indicator
+  const typingId = 'typing_'+Date.now();
+  appendTyping(typingId);
+
+  try{
+    const context = buildDataContext(q);  // pasa la pregunta para búsqueda inteligente
+    const systemPrompt = `Eres un asistente experto en análisis de datos de almacén para Mainbit.
+Tienes acceso a los datos del reporte de entradas. Los datos relevantes para esta pregunta ya están filtrados.
+Responde en español, de forma concisa y directa.
+Si encuentras el artículo/entrada buscada, menciona el número de entrada, fecha, proveedor y cantidad.
+Si no encuentras algo en los datos, dilo claramente.
+Usa emojis ocasionalmente. Máximo 4 párrafos cortos.
+
+${context}`;
+
+    const PROXY_URL = 'https://almacen-proxy.alfonsomj0.workers.dev';
+
+    const response = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:600,
+        system: systemPrompt,
+        messages: _chatHistory,
+      })
+    });
+
+    const data = await response.json();
+
+    if(data.error){
+      throw new Error(data.error.message||'Error de API');
+    }
+
+    const reply = data.content?.[0]?.text || 'Sin respuesta.';
+    _chatHistory.push({role:'assistant', content:reply});
+
+    // Mantener historial máximo 10 turnos
+    if(_chatHistory.length > 20) _chatHistory = _chatHistory.slice(-20);
+
+    removeTyping(typingId);
+    appendMsg('bot', reply);
+
+  }catch(err){
+    removeTyping(typingId);
+    appendMsg('bot', `❌ Error: ${err.message}. Verifica tu API Key y que tengas crédito disponible.`);
+  }
+
+  document.getElementById('chatSend').disabled=false;
+}
+
+function sendSuggestion(btn){
+  document.getElementById('chatInput').value = btn.textContent;
+  sendChat();
+}
+
+/* ── UI helpers ── */
+function appendMsg(role, text){
+  const msgs = document.getElementById('chatMessages');
+  const now  = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  const div  = document.createElement('div');
+  div.className = `msg ${role}`;
+  // Convertir saltos de línea a <br>
+  const safe = text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  div.innerHTML = `<div class="msg-bubble">${safe}</div><div class="msg-time">${now}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendTyping(id){
+  const msgs = document.getElementById('chatMessages');
+  const div  = document.createElement('div');
+  div.className='msg bot'; div.id=id;
+  div.innerHTML=`<div class="typing-bubble">
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+  </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function removeTyping(id){
+  const el=document.getElementById(id);
+  if(el) el.remove();
+}
+
+/* Mostrar badge cuando no está abierto */
+window.addEventListener('load',()=>{
+  initKpiDrag();
+  // Badge del chat después de 3s
+  setTimeout(()=>{
+    if(!_chatOpen){
+      const b=document.getElementById('chatBadge');
+      if(b){b.style.display='flex';}
+    }
+  }, 3000);
+});
 const isMobile = () => window.innerWidth <= 768;
 
 function syncMobileFilter(targetId, val){
@@ -2345,10 +2802,7 @@ async function exportPDF(){
   }
 }
 
-/* Init drag KPI only after DOM ready */
-window.addEventListener('load', () => {
-  initKpiDrag();
-});
+/* KPI drag init moved to main load listener above */
 
 </script>
 
@@ -2406,6 +2860,68 @@ window.addEventListener('load', () => {
       <div style="font-size:12px;">Haz clic en una entrada de la tabla<br>o busca por número de entrada</div>
     </div>
     <div id="drawerEntries"></div>
+  </div>
+</div>
+
+
+<!-- ══ CHAT BUTTON ══ -->
+<button id="chatBtn" onclick="toggleChat()" title="Asistente de Almacén">
+  <span id="chatBadge">1</span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+  </svg>
+</button>
+
+<!-- ══ CHAT PANEL ══ -->
+<div id="chatPanel">
+
+  <!-- Header -->
+  <div id="chatHeader">
+    <div class="chat-title">
+      <div class="chat-dot"></div>
+      Asistente Almacén
+    </div>
+    <button id="chatClose" onclick="toggleChat()">✕</button>
+  </div>
+
+  <!-- API Key ya no es necesaria — el proxy la maneja de forma segura -->
+
+  <!-- Mensajes -->
+  <div id="chatMessages">
+    <div class="msg bot">
+      <div class="msg-bubble">
+        👋 Hola, soy tu asistente de almacén Mainbit.<br><br>
+        Puedo responder preguntas sobre tus datos. Ejemplos:<br>
+        • <em>"¿Ya llegaron iPads?"</em><br>
+        • <em>"¿Cuál es el proveedor con más registros?"</em><br>
+        • <em>"¿Qué entró el 6 de abril?"</em><br>
+        • <em>"¿Qué hay en REFAC?"</em><br><br>
+        Carga tu Excel y pregunta lo que quieras 📦
+      </div>
+      <div class="msg-time">Ahora</div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div id="chatInputArea">
+    <div id="chatSuggestions">
+      <button class="sug-btn" onclick="sendSuggestion(this)">¿Hay iPads?</button>
+      <button class="sug-btn" onclick="sendSuggestion(this)">Top proveedor</button>
+      <button class="sug-btn" onclick="sendSuggestion(this)">Resumen del día</button>
+      <button class="sug-btn" onclick="sendSuggestion(this)">¿Qué hay en REFAC?</button>
+    </div>
+    <div class="chat-input-row">
+      <textarea id="chatInput" placeholder="Pregunta sobre tus datos..."
+        rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"
+        oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      <button id="chatSend" onclick="sendChat()" title="Enviar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </div>
 
