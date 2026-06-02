@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1631'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='11' font-weight='900' fill='%236366f1' text-anchor='middle'%3EMBT%3C/text%3E%3C/svg%3E"/>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1631'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='11' font-weight='900' fill='%23ffffff' text-anchor='middle'%3EMBT%3C/text%3E%3C/svg%3E"/>
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Dashboard Almacén | Mainbit</title>
@@ -2273,7 +2273,7 @@ Fechas disponibles: ${fechas.join(', ')}`;
 
   let detailSection = '';
   if(relevant.length){
-    // Agrupar por entrada para compactar
+    // Agrupar por entrada — máximo 30 entradas
     const byEnt = {};
     relevant.forEach(r=>{
       if(!byEnt[r.entrada]) byEnt[r.entrada]={
@@ -2281,32 +2281,32 @@ Fechas disponibles: ${fechas.join(', ')}`;
         estatus:r.estatus, proveedor:r.proveedor, proyecto:r.proyecto,
         empresa:r.empresa, oc:r.oc, items:[], cantidad:0
       };
-      byEnt[r.entrada].items.push(r.desc+(r.parte?` [${r.parte}]`:'')+` x${r.cantidad}`);
+      byEnt[r.entrada].items.push(r.desc.slice(0,50)+(r.parte?` [${r.parte}]`:'')+` x${r.cantidad}`);
       byEnt[r.entrada].cantidad += r.cantidad;
     });
 
-    const rows = Object.values(byEnt).slice(0,50).map(e=>
-      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.estatus}|${e.proveedor}|${e.proyecto}|${Math.round(e.cantidad)}uds|${e.items.join('; ')}`
+    const rows = Object.values(byEnt).slice(0,30).map(e=>
+      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
     ).join('\n');
 
-    detailSection = `\n\n=== REGISTROS RELEVANTES PARA TU PREGUNTA (${Object.keys(byEnt).length} entradas) ===
-Formato: #Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|Unidades|Artículos
+    detailSection = `\n\n=== REGISTROS RELEVANTES (${Object.keys(byEnt).length} entradas) ===
+#Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|Uds|Artículos
 ${rows}`;
   } else {
-    // Sin coincidencias específicas → mandar todas las entradas compactas
+    // Sin coincidencias — resumen compacto de todas las entradas (máx 50)
     const byEnt = {};
     all.forEach(r=>{
       if(!byEnt[r.entrada]) byEnt[r.entrada]={
         entrada:r.entrada,fecha:r.fecha,almacen:r.almacen,
         proveedor:r.proveedor,proyecto:r.proyecto,items:[],cantidad:0
       };
-      byEnt[r.entrada].items.push(r.desc);
+      byEnt[r.entrada].items.push(r.desc.slice(0,40));
       byEnt[r.entrada].cantidad+=r.cantidad;
     });
-    const rows = Object.values(byEnt).map(e=>
-      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.proveedor}|${Math.round(e.cantidad)}uds|${[...new Set(e.items)].slice(0,3).join('; ')}`
+    const rows = Object.values(byEnt).slice(0,50).map(e=>
+      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.proveedor.slice(0,25)}|${Math.round(e.cantidad)}uds|${[...new Set(e.items)].slice(0,2).join('; ')}`
     ).join('\n');
-    detailSection = `\n\n=== TODAS LAS ENTRADAS (resumen compacto) ===
+    detailSection = `\n\n=== ENTRADAS (resumen, ${Object.keys(byEnt).length} total) ===
 ${rows}`;
   }
 
@@ -2356,8 +2356,8 @@ ${context}`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:600,
+        model:'claude-sonnet-4-6',
+        max_tokens:400,
         system: systemPrompt,
         messages: _chatHistory,
       })
