@@ -2101,7 +2101,7 @@ function buildSearchIndex(){
     parte:    r.parte.toLowerCase(),
     proveedor:r.proveedor.toLowerCase(),
     proyecto: r.proyecto.toLowerCase(),
-    oc:       r.oc,
+    oc:       r.oc.toLowerCase(),
     empresa:  r.empresa.toLowerCase(),
     cantidad: r.cantidad,
     // Original para mostrar
@@ -2119,8 +2119,9 @@ function smartSearch(query){
     'cuántas','dime','dame','muéstrame','tiene','tienen','llegó','llegaron']);
   const words = query.toLowerCase()
     .replace(/[¿?¡!.,;:]/g,'')
+    .replace(/\border(?:en)?\s+de\s+compra\b/g, 'oc')
     .split(/\s+/)
-    .filter(w => w.length > 2 && !stop.has(w));
+    .filter(w => w.length >= 2 && !stop.has(w));
 
   if(!words.length) return _searchIndex.map(r=>r._r);
 
@@ -2136,6 +2137,7 @@ function smartSearch(query){
       if(r.entrada.includes(w))   score += 9;
       if(r.fecha && r.fecha.includes(w)) score += 8;
       if(r.parte.includes(w))     score += 4;
+      if(r.oc && r.oc.includes(w)) score += 10;
     });
     return {r:r._r, score};
   }).filter(x=>x.score>0)
@@ -2229,11 +2231,11 @@ Fechas disponibles: ${fechas.join(', ')}`;
     });
 
     const rows = Object.values(byEnt).map(e=>
-      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
+      `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|OC:${e.oc||'—'}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
     ).join('\n');
 
     detailSection = `\n\n=== REGISTROS RELEVANTES (${Object.keys(byEnt).length} entradas) ===
-#Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|Uds|Artículos
+#Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|OC|Uds|Artículos
 ${rows}`;
   } else {
     // Sin coincidencias — resumen compacto de todas las entradas (máx 50)
