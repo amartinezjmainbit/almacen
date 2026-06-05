@@ -2146,6 +2146,29 @@ function smartSearch(query){
   return scored.length ? scored.slice(0,80).map(x=>x.r) : [];
 }
 
+function extractDateFromQuery(q){
+  const ql = q.toLowerCase();
+  const months = {'enero':'01','febrero':'02','marzo':'03','abril':'04',
+    'mayo':'05','junio':'06','julio':'07','agosto':'08',
+    'septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'};
+  const year = new Date().getFullYear();
+  const found = [];
+  for(const [name, num] of Object.entries(months)){
+    const pats = [
+      new RegExp('(\\\\d{1,2})\\\\s+de\\\\s+'+name),
+      new RegExp(name+'\\\\s+(\\\\d{1,2})'),
+      new RegExp(name+'\\\\s+del?\\\\s+(\\\\d{1,2})'),
+    ];
+    for(const pat of pats){
+      const m = ql.match(pat);
+      if(m){ found.push(year+'-'+num+'-'+m[1].padStart(2,'0')); break; }
+    }
+  }
+  const iso = ql.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(iso) found.push(iso[0]);
+  return [...new Set(found)];
+}
+
 function buildDataContext(question){
   if(!rawData.length) return 'No hay datos cargados.';
   const all = rawData;
@@ -2177,8 +2200,19 @@ Top proveedores: ${provStr}
 Top proyectos (uds): ${projStr}
 Fechas disponibles: ${fechas.join(', ')}`;
 
-  // ── Búsqueda inteligente por pregunta ──
-  const relevant = smartSearch(question);
+  // ── Búsqueda: primero por fecha detectada, luego smartSearch ──
+  const detectedDates = extractDateFromQuery(question);
+  let relevant = [];
+  if(detectedDates.length){
+    // Filtrar TODO el dataset por las fechas detectadas
+    relevant = rawData.filter(r => detectedDates.includes(r.fecha));
+    // Si no hay exactas, caer en smartSearch
+    if(!relevant.length) relevant = smartSearch(question);
+  } else {
+    relevant = smartSearch(question);
+    // Si smartSearch no encontró nada, mandar todas las entradas
+    if(!relevant.length) relevant = rawData;
+  }
 
   let detailSection = '';
   if(relevant.length){
@@ -2194,7 +2228,7 @@ Fechas disponibles: ${fechas.join(', ')}`;
       byEnt[r.entrada].cantidad += r.cantidad;
     });
 
-    const rows = Object.values(byEnt).slice(0,10).map(e=>
+    const rows = Object.values(byEnt).map(e=>
       `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
     ).join('\n');
 
@@ -2212,7 +2246,7 @@ ${rows}`;
       byEnt[r.entrada].items.push(r.desc.slice(0,40));
       byEnt[r.entrada].cantidad+=r.cantidad;
     });
-    const rows = Object.values(byEnt).slice(0,15).map(e=>
+    const rows = Object.values(byEnt).map(e=>
       `#${e.entrada}|${e.fecha||'?'}|${e.almacen}|${e.proveedor.slice(0,25)}|${Math.round(e.cantidad)}uds|${[...new Set(e.items)].slice(0,2).join('; ')}`
     ).join('\n');
     detailSection = `\n\n=== ENTRADAS (resumen, ${Object.keys(byEnt).length} total) ===
