@@ -235,14 +235,14 @@ input.fsel-date:focus{border-color:var(--accent);}
 /* ════════════════════════════════
    BODY / SIDEBAR / MAIN / RIGHT
 ════════════════════════════════ */
-#body{flex:1;display:flex;overflow:hidden;}
+#body{flex:1;display:flex;overflow:hidden;margin-bottom:22px;}
 
 /* ── SIDEBAR ── */
 #sidebar{
   width:var(--side-w);min-width:var(--side-w);
   background:var(--sidebar);
   display:flex;flex-direction:column;align-items:center;
-  padding:10px 0 16px;gap:6px;
+  padding:10px 0 32px;gap:6px;
   border-right:1px solid var(--border);
   flex-shrink:0;overflow-y:auto;overflow-x:hidden;
   transition:background .4s, border-color .4s;
@@ -440,10 +440,26 @@ table.dtbl tr:hover td{background:var(--aglow);}
 /* ── Fecha filter inputs ── */
 input[type="date"].fsel{
   color-scheme:dark;
+  color:#f1f5f9;
 }
+input[type="date"].fsel::-webkit-datetime-edit{ color:#f1f5f9; }
+input[type="date"].fsel::-webkit-datetime-edit-text{ color:#94a3b8; }
+input[type="date"].fsel::-webkit-datetime-edit-day-field,
+input[type="date"].fsel::-webkit-datetime-edit-month-field,
+input[type="date"].fsel::-webkit-datetime-edit-year-field{ color:#f1f5f9; }
+input[type="date"].fsel::-webkit-calendar-picker-indicator{ filter:invert(1) opacity(.6);cursor:pointer; }
+
 [data-theme="light"] input[type="date"].fsel{
   color-scheme:light;
+  color:#1e293b;
+  background:rgba(0,0,0,0.07);
 }
+[data-theme="light"] input[type="date"].fsel::-webkit-datetime-edit{ color:#1e293b; }
+[data-theme="light"] input[type="date"].fsel::-webkit-datetime-edit-text{ color:#64748b; }
+[data-theme="light"] input[type="date"].fsel::-webkit-datetime-edit-day-field,
+[data-theme="light"] input[type="date"].fsel::-webkit-datetime-edit-month-field,
+[data-theme="light"] input[type="date"].fsel::-webkit-datetime-edit-year-field{ color:#1e293b; }
+[data-theme="light"] input[type="date"].fsel::-webkit-calendar-picker-indicator{ filter:none;cursor:pointer; }
 
 /* ── Drawer scrollbar ── */
 #drawerContent::-webkit-scrollbar{width:3px;}
@@ -1063,29 +1079,7 @@ input[type="date"].fsel{
           </div>
         </div>
 
-        <!-- Detalle entradas — filtrado por fecha activa -->
-        <div class="card">
-          <div class="ctitle">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            Detalle de Entradas &mdash;
-            <span id="tableCount" style="color:var(--alight);font-weight:600;font-size:10px;margin-left:4px;"></span>
-          </div>
-          <div class="tbl-wrap">
-            <table class="dtbl">
-              <thead>
-                <tr>
-                  <th>Fecha</th><th>No. Entrada</th><th>Estatus</th><th>Almacén</th>
-                  <th>Descripción</th><th>No. Parte</th>
-                  <th style="text-align:right">Cant.</th>
-                  <th>Proveedor</th><th>Proyecto</th>
-                </tr>
-              </thead>
-              <tbody id="tableBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Separador: zona de gráficas globales -->
+        <!-- Separador: zona de gráficas -->
         <div class="sec-divider">
           <div class="sec-divider-line"></div>
           <div class="sec-divider-label">
@@ -1114,6 +1108,28 @@ input[type="date"].fsel{
           </div>
         </div>
 
+        <!-- Detalle entradas — filtrado -->
+        <div class="card">
+          <div class="ctitle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Detalle de Entradas &mdash;
+            <span id="tableCount" style="color:var(--alight);font-weight:600;font-size:10px;margin-left:4px;"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="dtbl">
+              <thead>
+                <tr>
+                  <th>Fecha</th><th>No. Entrada</th><th>Estatus</th><th>Almacén</th>
+                  <th>Descripción</th><th>No. Parte</th>
+                  <th style="text-align:right">Cant.</th>
+                  <th>Proveedor</th><th>Proyecto</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Registros por almacén + Donut por empresa -->
         <div class="r2" id="chartsRow2">
           <div class="card chart-card" data-chart="chAlmacen">
@@ -1137,7 +1153,7 @@ input[type="date"].fsel{
           </div>
         </div>
 
-        <!-- Actividad histórica — siempre muestra rango completo sin filtro de fecha -->
+        <!-- Actividad histórica -->
         <div class="card" id="secTimeline">
           <div class="ctitle">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -2361,6 +2377,7 @@ function smartSearch(query){
   // Score cada registro
   const scored = _searchIndex.map(r=>{
     let score = 0;
+    const estatusLow = (r.estatus||'').toLowerCase();
     words.forEach(w=>{
       if(r.desc.includes(w))      score += 10;
       if(r.proveedor.includes(w)) score += 8;
@@ -2371,6 +2388,7 @@ function smartSearch(query){
       if(r.fecha && r.fecha.includes(w)) score += 8;
       if(r.parte.includes(w))     score += 4;
       if(r.oc && r.oc.includes(w)) score += 10;
+      if(estatusLow.includes(w))  score += 12;
     });
     return {r:r._r, score};
   }).filter(x=>x.score>0)
@@ -2444,27 +2462,41 @@ function buildDataContext(question){
   const projStr = Object.entries(byProj).sort((a,b)=>b[1]-a[1]).slice(0,10)
     .map(([p,n])=>`${p}:${Math.round(n)}uds`).join(', ');
 
+  const completasCount  = all.filter(r=>r.estatus==='COMPLETA').length;
+  const pendientesCount = all.length - completasCount;
+  const pendientesRows  = all.filter(r=>r.estatus&&r.estatus!=='COMPLETA');
+
   const globalSummary = `=== RESUMEN GLOBAL ===
 Archivo: ${document.getElementById('tFname')?.textContent||'—'}
 Período: ${fmtD(fechas[0])} → ${fmtD(fechas[fechas.length-1])}
 Entradas únicas: ${entradas} | Registros: ${all.length} | Unidades totales: ${totalUds}
+Estatus: ${completasCount} COMPLETA, ${pendientesCount} PENDIENTE(S)
 Por almacén: ${almStr}
 Top proveedores: ${provStr}
 Top proyectos (uds): ${projStr}
 Fechas disponibles: ${fechas.map(fmtD).join(', ')}`;
 
-  // ── Búsqueda: primero por fecha detectada, luego smartSearch ──
+  // ── Búsqueda: primero por estatus, luego fecha, luego smartSearch ──
+  const ql = question.toLowerCase();
   const detectedDates = extractDateFromQuery(question);
   let relevant = [];
-  if(detectedDates.length){
+
+  // Detección explícita de estatus
+  const queryPendiente = /pendiente|incompleta|no completa|sin completar|falta/i.test(question);
+  const queryCompleta  = /\bcompleta\b|\bcompletada\b/i.test(question);
+  if(queryPendiente){
+    relevant = all.filter(r => r.estatus && r.estatus.toUpperCase() !== 'COMPLETA');
+  } else if(queryCompleta){
+    relevant = all.filter(r => r.estatus && r.estatus.toUpperCase() === 'COMPLETA').slice(0,80);
+  } else if(detectedDates.length){
     // Filtrar TODO el dataset por las fechas detectadas
     relevant = rawData.filter(r => detectedDates.includes(r.fecha));
     // Si no hay exactas, caer en smartSearch
     if(!relevant.length) relevant = smartSearch(question);
   } else {
     relevant = smartSearch(question);
-    // Si smartSearch no encontró nada, mandar todas las entradas
-    if(!relevant.length) relevant = rawData;
+    // Si smartSearch no encontró nada, mandar resumen general
+    if(!relevant.length) relevant = rawData.slice(0,50);
   }
 
   let detailSection = '';
@@ -2535,9 +2567,10 @@ async function sendChat(){
 
   try{
     const context = buildDataContext(q);  // pasa la pregunta para búsqueda inteligente
-    const systemPrompt = `Asistente de almacén Mainbit. Datos de entradas ya filtrados.
-Responde en español, conciso. Menciona: #entrada, fecha, proveedor, cantidad.
-Si no existe en datos, dilo. Emojis ocasionales. Máx 3 párrafos.
+    const systemPrompt = `Eres el asistente de almacén de Mainbit. Tienes acceso COMPLETO a los datos del dashboard cargados desde SharePoint.
+REGLA CRÍTICA: Si la sección "REGISTROS RELEVANTES" del contexto contiene datos, ÚSALOS para responder. NO digas que no tienes información si hay registros en esa sección.
+El campo Estatus tiene exactamente dos valores posibles: "COMPLETA" o cualquier otro valor (= PENDIENTE).
+Responde en español, conciso. Menciona #entrada, fecha, proveedor, artículos cuando sea relevante. Máx 3 párrafos. Emojis ocasionales.
 
 ${context}`;
 
