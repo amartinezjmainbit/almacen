@@ -2969,7 +2969,7 @@ async function generateReportPDF(data){
   y+=Math.ceil(kpis.length/3)*(kpiH+3)+8;
 
   // Tabla entradas
-  const entradas=(data.entradas||[]).slice(0,30);
+  const entradas=(data.entradas||[]);
   if(entradas.length){
     sectionTitle('DETALLE DE ENTRADAS');
     const cols=['#Entrada','Fecha','Almacén','Proveedor','Proyecto','Uds','Estatus'];
@@ -3064,16 +3064,18 @@ async function generateReportPDF(data){
 }
 
 // Construye los datos del reporte DIRECTAMENTE desde rawData (sin depender del modelo)
-function buildReportData(q){
+function buildReportData(q, prePool){
   const fmt=f=>{
     if(!f) return '—';
     if(/^\d{4}-\d{2}-\d{2}/.test(f)){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
     return f;
   };
-  const dates = extractDateFromQuery(q);
+  const dates = extractDateFromQuery(q||'');
   let pool;
   const _matchD = (f, ds) => f && (ds.includes(f) || ds.includes(normalizeFecha(f)));
-  if(dates.length){
+  if(prePool !== undefined && prePool !== null){
+    pool = prePool;
+  } else if(dates.length){
     pool = rawData.filter(r=>_matchD(r.fecha, dates));
   } else {
     // Si la consulta es referencial ("esa información", "eso", etc.) reutiliza el último contexto
@@ -3178,7 +3180,24 @@ function buildFilteredPool(q){
         }
         return datePool;
       }
-      return results.length ? results : rawData;
+      if(results.length){
+        // Filtro estricto por entidad sobre resultados de smartSearch
+        const _n=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
+        const _kw=_n(_lastCtxFilter.value||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w));
+        if(_kw.length){
+          const _up=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
+          const _uv=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
+          const _mp=_up.filter(p=>_kw.some(k=>_n(p).includes(k)));
+          const _mv=_uv.filter(p=>_kw.some(k=>_n(p).includes(k)));
+          if(_mp.length||_mv.length){
+            const _ef=results.filter(r=>(!_mp.length||_mp.some(p=>r.proyecto===p))&&(!_mv.length||_mv.some(p=>r.proveedor===p)));
+            if(_ef.length) return _ef;
+          }
+        }
+        return results;
+      }
+      return rawData;
     }
     if(_lastCtxFilter.type==='dates' && Array.isArray(_lastCtxFilter.value) && _lastCtxFilter.value.length)
                                           return rawData.filter(r=>r.fecha&&(_lastCtxFilter.value.includes(r.fecha)||_lastCtxFilter.value.includes(normalizeFecha(r.fecha))));
@@ -3246,6 +3265,23 @@ function triggerFilteredReport(useFilter){
           if(sr.length) ctxPool = sr;
         }
         if(!ctxPool || !ctxPool.length) ctxPool = rawData;
+        // Prioridad 3: filtro estricto por entidad — evita que keywords genéricos contaminen el pool
+        // Si la consulta menciona un proyecto o proveedor específico, conservar solo esos registros
+        {
+          const _n=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+          const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
+          const _kw=_n(_lastCtxFilter.value||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w));
+          if(_kw.length){
+            const _up=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
+            const _uv=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
+            const _mp=_up.filter(p=>_kw.some(k=>_n(p).includes(k)));
+            const _mv=_uv.filter(p=>_kw.some(k=>_n(p).includes(k)));
+            if(_mp.length||_mv.length){
+              const _ef=ctxPool.filter(r=>(!_mp.length||_mp.some(p=>r.proyecto===p))&&(!_mv.length||_mv.some(p=>r.proveedor===p)));
+              if(_ef.length) ctxPool=_ef;
+            }
+          }
+        }
       } else if(_lastCtxFilter.type==='pendiente'){
         ctxPool = rawData.filter(r=>r.estatus && r.estatus.toUpperCase()!=='COMPLETA');
       } else if(_lastCtxFilter.type==='completa'){
@@ -3280,58 +3316,37 @@ async function handleReportRequest(q, typingId, precomputedPool=null, reportTitl
 
   appendMsg('bot','⏳ Generando reporte en PDF… puede tardar unos segundos.');
 
-  // ── Guardar estado del dashboard ──────────────────────────────────────────
-  const savedRawData = rawData;
-  const savedFilters = {
-    almacen:   document.getElementById('fAlmacen').value,
-    proveedor: document.getElementById('fProveedor').value,
-    proyecto:  document.getElementById('fProyecto').value,
-    entrada:   document.getElementById('fEntrada').value,
-    desde:     document.getElementById('fDesde')?.value||'',
-    hasta:     document.getElementById('fHasta')?.value||'',
-  };
-
   try{
-    // ── Inyectar pool filtrado como rawData temporal ───────────────────────
-    rawData = pool;
-    document.getElementById('fAlmacen').value   = '';
-    document.getElementById('fProveedor').value  = '';
-    document.getElementById('fProyecto').value   = '';
-    document.getElementById('fEntrada').value    = '';
-    if(document.getElementById('fDesde'))  document.getElementById('fDesde').value  = '';
-    if(document.getElementById('fHasta'))  document.getElementById('fHasta').value = '';
+    // ── Construir datos del reporte directamente desde el pool ────────────
+    const data = buildReportData(null, pool);
+    const _now = new Date();
+    const _hoy = `${String(_now.getDate()).padStart(2,'0')}/${String(_now.getMonth()+1).padStart(2,'0')}/${_now.getFullYear()}`;
+    data.titulo    = confirmedTitle;
+    data.generado  = _hoy;
+    const _compl   = pool.filter(r=>r.estatus==='COMPLETA').length;
+    const _pend    = pool.length - _compl;
+    const _udsKpi  = data.kpis.find(k=>k.label==='Total unidades');
+    const _provTop = data.topProveedores[0];
+    data.resumen   = `Se analizaron ${data.entradas.length} entrada${data.entradas.length===1?'':'s'} única${data.entradas.length===1?'':'s'} con ${pool.length} registro${pool.length===1?'':'s'} y ${_udsKpi?.value||'0'} unidades recibidas en el período ${data.periodo}. ${_compl} ${_compl===1?'entrada':'entradas'} completada${_compl===1?'':'s'}${_pend>0?` y ${_pend} pendiente${_pend===1?'':'s'}`:''}.`;
+    data.conclusion = _provTop
+      ? `Proveedor con mayor volumen: ${_provTop.proveedor} — ${_provTop.uds.toLocaleString('es-MX')} unidades en ${_provTop.registros} registro${_provTop.registros===1?'':'s'}.`
+      : '';
 
-    // Reconstruir dashboard con datos filtrados y esperar que los charts terminen
-    rebuildAll();
-    await new Promise(r=>setTimeout(r,1800));
-
-    // ── Generar PDF con el mismo diseño del botón "Reporte" ───────────────
-    await exportPDF();
+    // ── Generar PDF con diseño estructurado (sin alterar el dashboard) ────
+    await generateReportPDF(data);
 
     // ── Confirmación en el chat ───────────────────────────────────────────
-    const entradas  = new Set(pool.map(r=>r.entrada)).size;
-    const registros = pool.length;
     const container = document.getElementById('chatMessages');
     container.insertAdjacentHTML('beforeend',`
       <div class="msg bot"><div><div class="msg-bubble" style="padding:10px 14px">
         ✅ <strong>Reporte generado exitosamente</strong><br>
-        <span style="font-size:10px;color:var(--t3)">${entradas} entradas · ${registros.toLocaleString('es-MX')} registros incluidos</span><br><br>
+        <span style="font-size:10px;color:var(--t3)">${data.entradas.length} entradas · ${pool.length.toLocaleString('es-MX')} registros incluidos</span><br><br>
         <span style="font-size:10px;color:var(--t3)">📥 Revisa tu carpeta de Descargas</span>
       </div></div></div>`);
     container.scrollTop = container.scrollHeight;
 
   }catch(genErr){
     appendMsg('bot',`❌ Error al generar el archivo: ${genErr.message}`);
-  }finally{
-    // ── Restaurar rawData y filtros originales siempre ────────────────────
-    rawData = savedRawData;
-    document.getElementById('fAlmacen').value   = savedFilters.almacen;
-    document.getElementById('fProveedor').value  = savedFilters.proveedor;
-    document.getElementById('fProyecto').value   = savedFilters.proyecto;
-    document.getElementById('fEntrada').value    = savedFilters.entrada;
-    if(document.getElementById('fDesde'))  document.getElementById('fDesde').value  = savedFilters.desde;
-    if(document.getElementById('fHasta'))  document.getElementById('fHasta').value = savedFilters.hasta;
-    rebuildAll();
   }
 }
 
