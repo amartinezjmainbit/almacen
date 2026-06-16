@@ -2931,7 +2931,7 @@ async function generateReportPDF(data){
   doc.setFillColor(10,17,32); doc.rect(0,0,W,44,'F');
   doc.addImage(LOGO_B64,'PNG',margin,8,52,20);
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(241,245,249);
-  doc.text('REPORTE DE ALMACÉN',W-margin,17,{align:'right'});
+  doc.text((data.titulo||'REPORTE DE ALMACÉN').toUpperCase(),W-margin,17,{align:'right'});
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(148,163,184);
   doc.text(data.periodo||'',W-margin,25,{align:'right'});
   doc.text('Generado: '+data.generado,W-margin,31,{align:'right'});
@@ -2968,43 +2968,46 @@ async function generateReportPDF(data){
   });
   y+=Math.ceil(kpis.length/3)*(kpiH+3)+8;
 
-  // Tabla entradas
+  // Tabla entradas — columnas por defecto o personalizadas según la consulta
   const entradas=(data.entradas||[]);
   if(entradas.length){
     sectionTitle('DETALLE DE ENTRADAS');
-    const cols=['#Entrada','Fecha','Almacén','Proveedor','Proyecto','Uds','Estatus'];
-    const colW=[22,18,20,52,38,14,22], rowH=6.5;
+    const rowH=6.5;
+    // Determinar columnas a mostrar
+    const DEFAULT_COL_KEYS = ['entrada','fecha','almacen','proveedor','desc','proyecto','uds','estatus'];
+    const colKeys = (data.columns && data.columns.length >= 2) ? data.columns : DEFAULT_COL_KEYS;
+    const colDefs = colKeys.map(k=>REPORT_COLS[k]).filter(Boolean);
+    // Escalar anchos para ajustar contentW=186
+    const rawTotal = colDefs.reduce((s,c)=>s+c.w,0);
+    const scale = contentW / rawTotal;
+    const colW = colDefs.map(c=>Math.round(c.w*scale));
+    // Corregir redondeo para que la suma sea exactamente contentW
+    const wSum = colW.reduce((s,w)=>s+w,0);
+    if(colW.length>0) colW[colW.length-1] += (contentW - wSum);
     checkPage(rowH*2);
-    // Cabecera de tabla (oscura)
+    // Cabecera
     let tx=margin;
-    cols.forEach((c,i)=>{
+    colDefs.forEach((cd,i)=>{
       doc.setFillColor(30,41,59);
       doc.rect(tx,y,colW[i],rowH,'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(6.5); doc.setTextColor(241,245,249);
-      doc.text(c,tx+1.5,y+4.3);
+      doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.setTextColor(241,245,249);
+      doc.text(cd.label,tx+1.5,y+4.3);
       tx+=colW[i];
     }); y+=rowH;
     // Filas de datos
     entradas.forEach((e,ri)=>{
       checkPage(rowH+1);
-      const vals=[
-        String(e.entrada||''), String(e.fecha||''), String(e.almacen||''),
-        String(e.proveedor||'').slice(0,28), String(e.proyecto||'').slice(0,20),
-        String(e.uds||0), String(e.estatus||'')
-      ];
-      // Alternar fila: blanco / gris muy claro (sin ternarios en setFillColor)
-      const rowRed   = ri%2===0 ? 248 : 241;
-      const rowGreen = ri%2===0 ? 250 : 245;
-      const rowBlue  = ri%2===0 ? 252 : 249;
+      const rowRed=ri%2===0?248:241, rowGreen=ri%2===0?250:245, rowBlue=ri%2===0?252:249;
       let tx2=margin;
-      vals.forEach((v,ci)=>{
-        doc.setFillColor(rowRed, rowGreen, rowBlue);
+      colDefs.forEach((cd,ci)=>{
+        const v=String(cd.get(e)||'').slice(0,Math.floor(colW[ci]/1.5)+2);
+        doc.setFillColor(rowRed,rowGreen,rowBlue);
         doc.rect(tx2,y,colW[ci],rowH,'F');
-        const isPend = ci===6 && v!=='COMPLETA' && v!=='';
-        doc.setFont('helvetica', isPend?'bold':'normal');
-        doc.setFontSize(6.5);
-        doc.setTextColor(isPend?180:50, isPend?30:50, isPend?30:60);
-        doc.text(v.slice(0, Math.floor(colW[ci]/1.6)), tx2+1.5, y+4.3);
+        const isEstatusCol = cd.label==='Estatus';
+        const isPend = isEstatusCol && v!=='COMPLETA' && v!=='—' && v!=='';
+        doc.setFont('helvetica',isPend?'bold':'normal');
+        doc.setFontSize(6); doc.setTextColor(isPend?180:50,isPend?30:50,isPend?30:60);
+        doc.text(v.slice(0,Math.floor(colW[ci]/1.6)),tx2+1.5,y+4.3);
         tx2+=colW[ci];
       }); y+=rowH;
     }); y+=6;
@@ -3064,7 +3067,7 @@ async function generateReportPDF(data){
 }
 
 // Construye los datos del reporte DIRECTAMENTE desde rawData (sin depender del modelo)
-function buildReportData(q, prePool){
+function buildReportData(q, prePool, reportOptions={}){
   const fmt=f=>{
     if(!f) return '—';
     if(/^\d{4}-\d{2}-\d{2}/.test(f)){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
@@ -3101,17 +3104,33 @@ function buildReportData(q, prePool){
     ? `${fmt(poolDates[0])} al ${fmt(poolDates[poolDates.length-1])}`
     : 'Período completo';
 
-  // Entradas agrupadas
-  const byEnt={};
-  pool.forEach(r=>{
-    if(!byEnt[r.entrada]) byEnt[r.entrada]={
+  // Entradas: modo detalle (una fila por registro) o agrupado (una fila por número de entrada)
+  let entradas;
+  if(reportOptions.needsDetail){
+    entradas = pool.map(r=>({
       entrada:'#'+r.entrada, fecha:fmt(r.fecha),
       almacen:r.almacen||'—', proveedor:(r.proveedor||'—').slice(0,30),
-      proyecto:(r.proyecto||'—').slice(0,22), uds:0, estatus:r.estatus||'—'
-    };
-    byEnt[r.entrada].uds += r.cantidad;
-  });
-  const entradas = Object.values(byEnt).map(e=>({...e, uds:Math.round(e.uds)}));
+      proyecto:(r.proyecto||'—').slice(0,22), uds:Math.round(r.cantidad||0),
+      estatus:r.estatus||'—', cantidad:r.cantidad||0,
+      desc:(r.desc||'—'), parte:(r.parte||'—'),
+      oc:(r.oc||'—'), empresa:(r.empresa||'—'), pedido:(r.pedido||'—'),
+    }));
+  } else {
+    const byEnt={};
+    pool.forEach(r=>{
+      if(!byEnt[r.entrada]) byEnt[r.entrada]={
+        entrada:'#'+r.entrada, fecha:fmt(r.fecha),
+        almacen:r.almacen||'—', proveedor:(r.proveedor||'—').slice(0,30),
+        proyecto:(r.proyecto||'—').slice(0,22), uds:0, estatus:r.estatus||'—',
+        cantidad:0, desc:'', parte:'—', oc:(r.oc||'—'),
+        empresa:(r.empresa||'—'), pedido:(r.pedido||'—'),
+      };
+      byEnt[r.entrada].uds += r.cantidad;
+      byEnt[r.entrada].cantidad += r.cantidad;
+      if(!byEnt[r.entrada].desc && r.desc) byEnt[r.entrada].desc = r.desc;
+    });
+    entradas = Object.values(byEnt).map(e=>({...e, uds:Math.round(e.uds), cantidad:Math.round(e.cantidad)}));
+  }
 
   // KPIs
   const completas  = pool.filter(r=>r.estatus==='COMPLETA').length;
@@ -3134,10 +3153,11 @@ function buildReportData(q, prePool){
   const pendientes = pool.filter(r=>r.estatus&&r.estatus!=='COMPLETA').slice(0,20)
     .map(r=>({entrada:'#'+r.entrada,fecha:fmt(r.fecha),proveedor:r.proveedor||'—',articulos:(r.desc||'').slice(0,60)}));
 
+  const uniqueEntCount = new Set(pool.map(r=>r.entrada)).size;
   return {
     periodo,
     kpis:[
-      {label:'Entradas únicas',  value:String(entradas.length)},
+      {label:'Entradas únicas',  value:String(uniqueEntCount)},
       {label:'Total registros',  value:String(pool.length)},
       {label:'Total unidades',   value:totalUds.toLocaleString('es-MX')},
       {label:'Proveedores',      value:String(provCount)},
@@ -3146,6 +3166,181 @@ function buildReportData(q, prePool){
     ],
     entradas, topProveedores, topProyectos, pendientes,
   };
+}
+
+// Llama a Claude para extraer términos de exclusión/inclusión con NLU real
+// Devuelve {excl:[], incl:[]} — nunca lanza, falla silenciosamente
+async function extractAIFilters(q){
+  if(!q||!q.trim()) return {excl:[],incl:[]};
+  const _nd = s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  try{
+    const res = await fetch('https://almacen-proxy.alfonsomj0.workers.dev',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001', max_tokens:120,
+        system:'Eres un extractor de filtros para base de datos de almacén. Analiza la consulta y extrae términos de exclusión/inclusión. Responde ÚNICAMENTE con JSON puro sin texto adicional: {"excl":["termino1"],"incl":["termino2"]}. Usa minúsculas sin acentos. REGLAS: (1) excl: lo que el usuario NO quiere en el reporte. (2) incl: SOLO cuando el usuario usa frases EXCLUSIVAS como "solo", "únicamente", "solamente", "exclusivamente". (3) "pero sí X", "también X", "incluyendo X" NO son inclusión exclusiva — dejan incl vacío, solo sirven para confirmar lo que no se excluye. Ejemplos: "que no vengan uniformes" → {"excl":["uniformes"],"incl":[]}. "pero sí informático y accesorios" → {"excl":[],"incl":[]}. "solo cables" → {"excl":[],"incl":["cables"]}. "sin uniformes pero sí informático" → {"excl":["uniformes"],"incl":[]}. "excepto tóner, solo monitores" → {"excl":["toner"],"incl":["monitores"]}.',
+        messages:[{role:'user',content:`Consulta de reporte: "${q}"`}]
+      })
+    });
+    const d = await res.json();
+    const txt = (d.content?.[0]?.text||'').trim();
+    const p = JSON.parse(txt);
+    return {
+      excl:(p.excl||[]).map(t=>_nd(t)).filter(t=>t.length>=3),
+      incl:(p.incl||[]).map(t=>_nd(t)).filter(t=>t.length>=3)
+    };
+  }catch(e){ return {excl:[],incl:[]}; }
+}
+
+// Aplica exclusiones/inclusiones de descripción extraídas de la consulta en lenguaje natural
+function applyDescriptionFilters(pool, q, aiFilters=null){
+  if(!pool || !pool.length || !q) return pool;
+  const _nd = s => (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const qn = _nd(q);
+
+  // Extrae términos de exclusión: "no considere X", "excepto X", "sin X", "excluyendo X",
+  // "que no vengan X", "no vengan X", "que no sean X", "no incluyas X", etc.
+  const exclTerms = [];
+  const exclPatterns = [
+    /no\s+consider[ae]\s+([a-zà-ü]+)/g,
+    /excepto\s+([a-zà-ü]+)/g,
+    /excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /\bno\s+vengan?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+  ];
+  for(const re of exclPatterns){
+    let m;
+    while((m = re.exec(qn)) !== null){
+      const w = m[1];
+      if(w.length >= 4) exclTerms.push(w);
+    }
+  }
+
+  // Extrae términos de inclusión ESTRICTA: "solo X", "solamente X", "únicamente X"
+  // NOTA: "pero sí X" / "también X" NO son inclusión estricta — solo confirman que no se excluya X
+  const inclTerms = [];
+  const inclPatterns = [
+    /\bsol[ao](?:mente)?\s+(?:bienes?\s+|equipos?\s+|articulos?\s+)?([a-zà-ü]+)/g,
+    /[uú]nicamente\s+(?:bienes?\s+|equipos?\s+)?([a-zà-ü]+)/g,
+    /exclusivamente\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+  ];
+  for(const re of inclPatterns){
+    let m;
+    while((m = re.exec(qn)) !== null){ const w=m[1]; if(w.length>=4) inclTerms.push(w); }
+  }
+
+  // Combinar con términos extraídos por IA (cobertura total de lenguaje natural)
+  if(aiFilters){
+    (aiFilters.excl||[]).forEach(t=>{ if(!exclTerms.includes(t)) exclTerms.push(t); });
+    (aiFilters.incl||[]).forEach(t=>{ if(!inclTerms.includes(t)) inclTerms.push(t); });
+  }
+
+  if(!exclTerms.length && !inclTerms.length) return pool;
+
+  // Aplicar exclusión
+  let filtered = exclTerms.length
+    ? pool.filter(r => {
+        const desc=_nd(r.desc||''), prov=_nd(r.proveedor||''), alm=_nd(r.almacen||'');
+        return !exclTerms.some(t => desc.includes(t) || prov.includes(t) || alm.includes(t));
+      })
+    : [...pool];
+  if(exclTerms.length && !filtered.length) filtered = [...pool]; // revert si filtró todo
+
+  // Aplicar inclusión (solo si hay coincidencias razonables — evita falsos negativos)
+  if(inclTerms.length){
+    const incl = filtered.filter(r => {
+      const desc=_nd(r.desc||''), prov=_nd(r.proveedor||''), alm=_nd(r.almacen||'');
+      return inclTerms.some(t => desc.includes(t) || prov.includes(t) || alm.includes(t));
+    });
+    // Solo aplicar si el filtro es significativo (no vacío y no igual al pool completo)
+    if(incl.length > 0 && incl.length < filtered.length) filtered = incl;
+  }
+
+  return filtered.length ? filtered : pool;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Registro de columnas disponibles para el reporte PDF
+// ──────────────────────────────────────────────────────────────────────────────
+// Nota: los campos de 'e' ya vienen procesados por buildReportData (fecha formateada, '#' en entrada, etc.)
+const REPORT_COLS = {
+  entrada:   { label:'#Entrada',     w:20, get: e => String(e.entrada||'') },
+  fecha:     { label:'Fecha',        w:18, get: e => String(e.fecha||'—') },
+  almacen:   { label:'Almacén',      w:16, get: e => String(e.almacen||'—') },
+  proveedor: { label:'Proveedor',    w:50, get: e => String(e.proveedor||'—') },
+  proyecto:  { label:'Proyecto',     w:36, get: e => String(e.proyecto||'—') },
+  uds:       { label:'Uds',          w:12, get: e => String(e.uds||0) },
+  cantidad:  { label:'Cantidad',     w:14, get: e => String(e.cantidad||0) },
+  estatus:   { label:'Estatus',      w:20, get: e => String(e.estatus||'—') },
+  desc:      { label:'Descripción',  w:48, get: e => String(e.desc||'—').slice(0,28) },
+  parte:     { label:'Núm. Parte',   w:26, get: e => String(e.parte||'—').slice(0,15) },
+  oc:        { label:'Orden Compra', w:26, get: e => String(e.oc||'—').slice(0,15) },
+  empresa:   { label:'Empresa',      w:26, get: e => String(e.empresa||'—').slice(0,14) },
+  pedido:    { label:'Pedido',       w:22, get: e => String(e.pedido||'—').slice(0,12) },
+};
+
+// Aliases para detectar columnas en texto natural
+const COL_ALIASES = [
+  ['numero de entrada','entrada'],['num entrada','entrada'],['#entrada','entrada'],
+  ['dia de ingreso','fecha'],['fecha de ingreso','fecha'],['dia ingreso','fecha'],['ingreso','fecha'],['fecha','fecha'],
+  ['orden de compra','oc'],['orden compra','oc'],[' oc ','oc'],
+  ['numero de parte','parte'],['num de parte','parte'],['numero parte','parte'],['num parte','parte'],
+  ['descripcion del bien','desc'],['descripcion','desc'],['articulo','desc'],['bien','desc'],
+  ['proveedor','proveedor'],
+  ['cantidad','cantidad'],['unidades','uds'],['uds','uds'],
+  ['estatus','estatus'],['estado','estatus'],
+  ['almacen','almacen'],
+  ['proyecto','proyecto'],['clave','proyecto'],
+  ['empresa','empresa'],
+  ['pedido reporte','pedido'],['pedido','pedido'],
+  ['texto libre','textoLibre'],
+];
+
+function extractReportOptions(q){
+  if(!q) return {};
+  const _nd = s => (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const qn = _nd(q);
+
+  // ── Columnas solicitadas: "la tabla debe contener X, Y, Z" ──────────────
+  let columns = null;
+  const colTrigger = qn.match(/(?:la\s+tabla\s+(?:debe\s+)?(?:contener|incluir|tener)|con\s+(?:las?\s+)?columnas?|con\s+(?:los?\s+)?campos?)\s*[,:]?\s*(.+?)(?:\.\s|$)/);
+  if(colTrigger){
+    const txt = colTrigger[1];
+    const found = [];
+    // Escanear texto de izquierda a derecha para preservar el orden solicitado
+    const sorted = [...COL_ALIASES].sort((a,b)=>b[0].length-a[0].length);
+    let pos = 0;
+    while(pos < txt.length){
+      let best = null, bestIdx = txt.length;
+      for(const [alias,key] of sorted){
+        const idx = txt.indexOf(alias.trim(), pos);
+        if(idx !== -1 && idx < bestIdx){ bestIdx=idx; best=[alias,key]; }
+      }
+      if(!best) break;
+      if(!found.includes(best[1])) found.push(best[1]);
+      pos = bestIdx + best[0].trim().length;
+    }
+    if(found.length >= 2) columns = found;
+  }
+
+  // ── Ordenamiento: "ordenados por X [descendente]" ───────────────────────
+  let sortField = null, sortDesc = false;
+  const SORT_FIELDS = {
+    'fecha':'fecha','dia':'fecha','ingreso':'fecha',
+    'cantidad':'cantidad','uds':'cantidad','unidades':'cantidad',
+    'proveedor':'proveedor','proyecto':'proyecto','entrada':'entrada',
+    'descripcion':'desc','desc':'desc','estatus':'estatus','oc':'oc',
+  };
+  const sm = qn.match(/ordenados?\s+(?:por\s+)?([a-záéíóúü]+)/);
+  if(sm) sortField = SORT_FIELDS[sm[1]] || null;
+  sortDesc = /descendente|de\s+mayor\s+a\s+menor/.test(qn);
+
+  // Detail mode: columnas que solo existen a nivel registro (no entrada agrupada)
+  const needsDetail = columns && columns.some(c=>['desc','parte','oc','pedido','empresa'].includes(c));
+
+  return { columns, sortField, sortDesc, needsDetail };
 }
 
 // Determina el conjunto de filas que debe incluir el reporte según el contexto
@@ -3195,7 +3390,47 @@ function buildFilteredPool(q){
             if(_ef.length) return _ef;
           }
         }
+        // Filtro secundario: keywords de q actual (ej. "proyecto OAJ" en consulta nueva)
+        {
+          const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
+          const _exclQ2=new Set();
+          [/no\s+consider[ae]\s+([a-zà-ü]+)/g,/excepto\s+([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+            let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQ2.add(m[1]);
+          });
+          const _kw2=_n2(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw2.has(w)&&!_exclQ2.has(w));
+          if(_kw2.length){
+            const _up2=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
+            const _uv2=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
+            const _mp2=_up2.filter(p=>_kw2.some(k=>_n2(p).includes(k)));
+            const _mv2=_uv2.filter(p=>_kw2.some(k=>_n2(p).includes(k)));
+            if(_mp2.length||_mv2.length){
+              const _ef2=rawData.filter(r=>(!_mp2.length||_mp2.some(p=>r.proyecto===p))&&(!_mv2.length||_mv2.some(p=>r.proveedor===p)));
+              if(_ef2.length) return _ef2;
+            }
+          }
+        }
         return results;
+      }
+      // smartSearch vacío: intentar entity filter de q sobre rawData completo
+      {
+        const _nq=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        const _swq=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
+        const _exclQb=new Set();
+        [/no\s+consider[ae]\s+([a-zà-ü]+)/g,/excepto\s+([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          let m; const _qbn=_nq(q||''); while((m=re.exec(_qbn))!==null) if(m[1].length>=4) _exclQb.add(m[1]);
+        });
+        const _kwq=_nq(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_swq.has(w)&&!_exclQb.has(w));
+        if(_kwq.length){
+          const _upq=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
+          const _uvq=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
+          const _mpq=_upq.filter(p=>_kwq.some(k=>_nq(p).includes(k)));
+          const _mvq=_uvq.filter(p=>_kwq.some(k=>_nq(p).includes(k)));
+          if(_mpq.length||_mvq.length){
+            const _efq=rawData.filter(r=>(!_mpq.length||_mpq.some(p=>r.proyecto===p))&&(!_mvq.length||_mvq.some(p=>r.proveedor===p)));
+            if(_efq.length) return _efq;
+          }
+        }
       }
       return rawData;
     }
@@ -3203,6 +3438,29 @@ function buildFilteredPool(q){
                                           return rawData.filter(r=>r.fecha&&(_lastCtxFilter.value.includes(r.fecha)||_lastCtxFilter.value.includes(normalizeFecha(r.fecha))));
     if(_lastCtxFilter.type==='pendiente') return rawData.filter(r=>r.estatus && r.estatus.toUpperCase()!=='COMPLETA');
     if(_lastCtxFilter.type==='completa')  return rawData.filter(r=>r.estatus && r.estatus.toUpperCase()==='COMPLETA');
+  }
+  // Sin contexto previo: aplicar entity filter de q directamente sobre rawData completo
+  {
+    const _nq=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const _swq=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
+    // Excluir del matching de entidades los términos que el usuario quiere eliminar
+    const _exclQ=new Set();
+    [/no\s+consider[ae]\s+([a-zà-ü]+)/g,/excepto\s+([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+      let m; const _qn2=_nq(q||''); while((m=re.exec(_qn2))!==null) if(m[1].length>=4) _exclQ.add(m[1]);
+    });
+    const _kwq=_nq(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_swq.has(w)&&!_exclQ.has(w));
+    if(_kwq.length){
+      const _upq=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
+      const _uvq=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
+      const _uaq=[...new Set(rawData.map(r=>(r.almacen||'').trim()).filter(Boolean))];
+      const _mpq=_upq.filter(p=>_kwq.some(k=>_nq(p).includes(k)));
+      const _mvq=_uvq.filter(p=>_kwq.some(k=>_nq(p).includes(k)));
+      const _maq=_uaq.filter(p=>_kwq.some(k=>_nq(p).includes(k)));
+      if(_mpq.length||_mvq.length||_maq.length){
+        const _efq=rawData.filter(r=>(!_mpq.length||_mpq.some(p=>r.proyecto===p))&&(!_mvq.length||_mvq.some(p=>r.proveedor===p))&&(!_maq.length||_maq.some(p=>r.almacen===p)));
+        if(_efq.length) return _efq;
+      }
+    }
   }
   return rawData;
 }
@@ -3220,12 +3478,17 @@ function buildPdfTitle(searchLabel, pool){
     'llego','llegaron','llegado','llegan','hay','tiene','tienen',
     'reporte','informe','word','genera','generame','generarme','dame','dime','muestra','hazme','quiero',
     'necesito','elabora','descarga','exporta','puedes','crea','creame','regalame',
-    'hola','una','unos','unas','un','la','el','los','las','del','de','si','que',
+    'hola','una','unos','unas','un','la','el','los','las','del','de','si','que','pero','todo','todos',
     'cuantas','cuantos','relacion','informacion','datos','registros','tengo','cuales','cuanto',
-    'cuando','donde','como','para','con','sobre','por','mas','pdf'
+    'cuando','donde','como','para','con','sobre','por','mas','pdf',
+    // palabras de exclusión/inclusión — no deben aparecer en el título
+    'vengan','vayan','salgan','aparezcan','incluyan','sean','vengan','traigas','pongas','metas',
+    'considere','considera','excluyendo','excluye','excepto','tampoco','ninguno','ninguna',
+    'informatico','informaticos','accesorios','accesorio','uniformes','uniforme',
+    'incluyendo','incluidas','incluidos','tambien','unicamente','solamente'
   ]);
   const norm = (searchLabel||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
-  const words = norm.split(/[\s,;?¿!¡.'"]+/).filter(w=>w.length>3&&!skip.has(w));
+  const words = norm.split(/[\s,;?¿!¡.'"]+/).filter(w=>w.length>=3&&!skip.has(w));
   let title = words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ') || 'Reporte';
   const fmtD = f=>{
     if(!f) return '';
@@ -3248,7 +3511,7 @@ function triggerFilteredReport(useFilter){
   if(!useFilter){
     const saved = _lastCtxFilter;
     _lastCtxFilter = null;
-    handleReportRequest(q, typingId, null, 'Almacén Completo').then(()=>{ _lastCtxFilter = saved; document.getElementById('chatSend').disabled=false; });
+    handleReportRequest(q, typingId, rawData, 'Almacén Completo').then(()=>{ _lastCtxFilter = saved; document.getElementById('chatSend').disabled=false; });
   } else {
     // Calcular pool SOLO desde el filtro de contexto, ignorando fechas de la nueva consulta
     let ctxPool = null;
@@ -3282,6 +3545,27 @@ function triggerFilteredReport(useFilter){
             }
           }
         }
+        // Filtro adicional: keywords de la consulta ACTUAL (q)
+        // Captura "proyecto OAJ" aunque _lastCtxFilter.value solo diga "ingresos llegado"
+        if(ctxPool && ctxPool.length){
+          const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
+          const _exclQtr=new Set();
+          [/no\s+consider[ae]\s+([a-zà-ü]+)/g,/excepto\s+([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+            let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQtr.add(m[1]);
+          });
+          const _kw2=_n2(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw2.has(w)&&!_exclQtr.has(w));
+          if(_kw2.length){
+            const _up2=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
+            const _uv2=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
+            const _mp2=_up2.filter(p=>_kw2.some(k=>_n2(p).includes(k)));
+            const _mv2=_uv2.filter(p=>_kw2.some(k=>_n2(p).includes(k)));
+            if(_mp2.length||_mv2.length){
+              const _ef2=rawData.filter(r=>(!_mp2.length||_mp2.some(p=>r.proyecto===p))&&(!_mv2.length||_mv2.some(p=>r.proveedor===p)));
+              if(_ef2.length) ctxPool=_ef2;
+            }
+          }
+        }
       } else if(_lastCtxFilter.type==='pendiente'){
         ctxPool = rawData.filter(r=>r.estatus && r.estatus.toUpperCase()!=='COMPLETA');
       } else if(_lastCtxFilter.type==='completa'){
@@ -3303,7 +3587,23 @@ async function handleReportRequest(q, typingId, precomputedPool=null, reportTitl
   removeTyping(typingId);
 
   // ── Filtrar datos según el contexto (búsqueda previa, fechas, etc.) ───────
-  const pool = precomputedPool !== null ? precomputedPool : buildFilteredPool(q);
+  const _basePool = precomputedPool !== null ? precomputedPool : buildFilteredPool(q);
+  // Extrae filtros con NLU real (Claude) para cubrir cualquier variante de lenguaje natural
+  const _aiFilters = await extractAIFilters(q);
+  const pool = applyDescriptionFilters(_basePool, q, _aiFilters);
+
+  // ── Opciones de reporte: columnas, ordenamiento, modo detalle ────────────
+  const reportOptions = extractReportOptions(q);
+  if(reportOptions.sortField){
+    const sf = reportOptions.sortField;
+    pool.sort((a,b)=>{
+      const va=a[sf]||'', vb=b[sf]||'';
+      if(!isNaN(va)&&!isNaN(vb)) return reportOptions.sortDesc?Number(vb)-Number(va):Number(va)-Number(vb);
+      const c=String(va).localeCompare(String(vb),'es');
+      return reportOptions.sortDesc?-c:c;
+    });
+  }
+
   const defaultTitle = reportTitle || buildPdfTitle(q, pool);
 
   // ── Pedir título al usuario antes de generar ──────────────────────────────
@@ -3318,16 +3618,18 @@ async function handleReportRequest(q, typingId, precomputedPool=null, reportTitl
 
   try{
     // ── Construir datos del reporte directamente desde el pool ────────────
-    const data = buildReportData(null, pool);
+    const data = buildReportData(null, pool, reportOptions);
     const _now = new Date();
     const _hoy = `${String(_now.getDate()).padStart(2,'0')}/${String(_now.getMonth()+1).padStart(2,'0')}/${_now.getFullYear()}`;
     data.titulo    = confirmedTitle;
     data.generado  = _hoy;
+    if(reportOptions.columns) data.columns = reportOptions.columns;
     const _compl   = pool.filter(r=>r.estatus==='COMPLETA').length;
     const _pend    = pool.length - _compl;
     const _udsKpi  = data.kpis.find(k=>k.label==='Total unidades');
     const _provTop = data.topProveedores[0];
-    data.resumen   = `Se analizaron ${data.entradas.length} entrada${data.entradas.length===1?'':'s'} única${data.entradas.length===1?'':'s'} con ${pool.length} registro${pool.length===1?'':'s'} y ${_udsKpi?.value||'0'} unidades recibidas en el período ${data.periodo}. ${_compl} ${_compl===1?'entrada':'entradas'} completada${_compl===1?'':'s'}${_pend>0?` y ${_pend} pendiente${_pend===1?'':'s'}`:''}.`;
+    const _uniqEnt = new Set(pool.map(r=>r.entrada)).size;
+    data.resumen   = `Se analizaron ${_uniqEnt} entrada${_uniqEnt===1?'':'s'} única${_uniqEnt===1?'':'s'} con ${pool.length} registro${pool.length===1?'':'s'} y ${_udsKpi?.value||'0'} unidades recibidas en el período ${data.periodo}. ${_compl} ${_compl===1?'registro':'registros'} completado${_compl===1?'':'s'}${_pend>0?` y ${_pend} pendiente${_pend===1?'':'s'}`:''}.`;
     data.conclusion = _provTop
       ? `Proveedor con mayor volumen: ${_provTop.proveedor} — ${_provTop.uds.toLocaleString('es-MX')} unidades en ${_provTop.registros} registro${_provTop.registros===1?'':'s'}.`
       : '';
@@ -3375,6 +3677,14 @@ async function sendChat(){
   appendTyping(typingId);
 
   try{
+    // ── Intención combinada: resumen + reporte en el mismo mensaje ──────────────
+    const _qn = q.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+    if(isReportRequest(q) && /\b(resumen|sintesis|summary)\b/.test(_qn)){
+      await callClaudeBot(q, typingId);
+      offerReportAfterSummary(q);
+      return;
+    }
+
     // ── Solicitud de reporte: preguntar formato ─────────────────────────────────
     if(isReportRequest(q)){
       if(isWordRequest(q)){
@@ -3556,6 +3866,36 @@ ${context}`;
   document.getElementById('chatSend').disabled=false;
 }
 
+
+// Muestra el diálogo de filtro de reporte DESPUÉS de que Claude ya dio el resumen
+function offerReportAfterSummary(q){
+  _pendingReportQuery = q;
+  const chatMessages = document.getElementById('chatMessages');
+  if(_lastCtxFilter && (_lastCtxFilter.type==='search'||_lastCtxFilter.type==='pendiente'||_lastCtxFilter.type==='completa')){
+    const label = _lastCtxFilter.type==='pendiente' ? 'entradas pendientes'
+                : _lastCtxFilter.type==='completa'  ? 'entradas completadas'
+                : extractSearchLabel(_lastCtxFilter.value||'');
+    const totalReg = rawData.length.toLocaleString('es-MX');
+    chatMessages.insertAdjacentHTML('beforeend',`
+      <div class="msg bot"><div><div class="msg-bubble" style="padding:12px 14px">
+        📄 ¿También genero el reporte en PDF?
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+          <button onclick="triggerFilteredReport(true)" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:13px;text-align:left">
+            📋 Solo de <strong>"${label}"</strong> <span style="opacity:.7;font-size:11px">(búsqueda anterior)</span>
+          </button>
+          <button onclick="triggerFilteredReport(false)" style="background:var(--bg3,#1e293b);color:var(--t1,#f8fafc);border:1px solid var(--border,#334155);border-radius:8px;padding:9px 14px;cursor:pointer;font-size:13px;text-align:left">
+            📊 Todo el almacén <span style="opacity:.7;font-size:11px">(${totalReg} registros en total)</span>
+          </button>
+        </div>
+      </div></div></div>`);
+  } else {
+    const typingId2 = 'typing_'+Date.now();
+    appendTyping(typingId2);
+    document.getElementById('chatSend').disabled=true;
+    handleReportRequest(q, typingId2).then(()=>{ document.getElementById('chatSend').disabled=false; });
+  }
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
 
 function showReportFormatDialog(q, typingId){
   removeTyping(typingId);
