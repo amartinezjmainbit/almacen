@@ -801,6 +801,31 @@ input[type="date"].fsel::-webkit-calendar-picker-indicator{ filter:invert(1) opa
 #chatSend:disabled{opacity:.4;cursor:not-allowed;transform:none;}
 #chatSend svg{width:16px;height:16px;}
 
+/* Mic button */
+#chatMic{
+  background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);
+  border-radius:10px;width:38px;height:38px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;color:#818cf8;
+}
+#chatMic:hover{background:rgba(99,102,241,0.28);}
+#chatMic.recording{
+  background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.5);
+  color:#f87171;animation:micPulse 1s infinite;
+}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4);}50%{box-shadow:0 0 0 7px rgba(239,68,68,0);}}
+#chatMic svg{width:16px;height:16px;}
+/* TTS toggle button in header */
+#chatMuteBtn{
+  background:rgba(255,255,255,0.06);border:1px solid #2a3f5f;
+  border-radius:6px;color:#475569;width:26px;height:26px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+#chatMuteBtn:hover{color:#f1f5f9;border-color:#6366f1;}
+#chatMuteBtn.tts-on{color:#10b981;border-color:rgba(16,185,129,0.5);}
+#chatMuteBtn svg{width:13px;height:13px;}
+
 /* Mobile chat */
 @media(max-width:768px){
   #chatPanel{width:calc(100vw - 20px);right:10px;bottom:80px;height:70vh;}
@@ -3710,6 +3735,7 @@ async function handleReportRequest(q, typingId, precomputedPool=null, reportTitl
 
 /* ── Enviar mensaje ── */
 async function sendChat(){
+  window.speechSynthesis && window.speechSynthesis.cancel();
   if(!rawData.length){
     appendMsg('bot','📂 Primero carga tu archivo Excel para poder consultar los datos.');
     return;
@@ -3915,6 +3941,7 @@ ${context}`;
 
     removeTyping(typingId);
     appendMsg('bot', reply);
+    speakReply(reply);
   }catch(err){
     removeTyping(typingId);
     appendMsg('bot', `❌ Error: ${err.message}. Verifica tu API Key y que tengas crédito disponible.`);
@@ -4023,6 +4050,83 @@ function sendSuggestion(btn){
 }
 
 /* ── UI helpers ── */
+// ── VOICE (Web Speech API) ──────────────────────────────────────────────────
+let _ttsEnabled = false;
+let _recognition = null;
+let _isListening = false;
+
+const _svgSpkOn  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
+const _svgSpkOff = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
+
+function initVoice(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return;
+  _recognition = new SR();
+  _recognition.lang = 'es-MX';
+  _recognition.continuous = false;
+  _recognition.interimResults = false;
+  _recognition.onstart = () => {
+    _isListening = true;
+    document.getElementById('chatMic').classList.add('recording');
+  };
+  _recognition.onresult = e => {
+    const t = e.results[0][0].transcript;
+    const inp = document.getElementById('chatInput');
+    inp.value = t;
+    inp.style.height = 'auto';
+    inp.style.height = inp.scrollHeight + 'px';
+    _isListening = false;
+    document.getElementById('chatMic').classList.remove('recording');
+    sendChat();
+  };
+  _recognition.onerror = () => {
+    _isListening = false;
+    document.getElementById('chatMic').classList.remove('recording');
+  };
+  _recognition.onend = () => {
+    _isListening = false;
+    document.getElementById('chatMic').classList.remove('recording');
+  };
+}
+
+function toggleMic(){
+  if(!_recognition) initVoice();
+  if(!_recognition){
+    appendMsg('bot','⚠️ Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.');
+    return;
+  }
+  if(_isListening){ _recognition.stop(); } else { _recognition.start(); }
+}
+
+function speakReply(text){
+  if(!_ttsEnabled || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const clean = text.replace(/[*_~`#]/g,'').replace(/\n+/g,'. ').trim();
+  const utt = new SpeechSynthesisUtterance(clean);
+  utt.lang = 'es-MX';
+  utt.rate = 1.05;
+  const voices = window.speechSynthesis.getVoices();
+  const esVoice = voices.find(v => v.lang.startsWith('es'));
+  if(esVoice) utt.voice = esVoice;
+  window.speechSynthesis.speak(utt);
+}
+
+function toggleTTS(){
+  _ttsEnabled = !_ttsEnabled;
+  const btn = document.getElementById('chatMuteBtn');
+  if(_ttsEnabled){
+    btn.classList.add('tts-on');
+    btn.title = 'Silenciar voz';
+    btn.innerHTML = _svgSpkOn;
+  } else {
+    btn.classList.remove('tts-on');
+    btn.title = 'Activar voz';
+    btn.innerHTML = _svgSpkOff;
+    window.speechSynthesis && window.speechSynthesis.cancel();
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function appendMsg(role, text){
   const msgs = document.getElementById('chatMessages');
   const now  = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
@@ -4520,7 +4624,15 @@ async function exportPDF(){
       <div class="chat-dot"></div>
       Asistente Almacén
     </div>
-    <button id="chatClose" onclick="toggleChat()">✕</button>
+    <div style="display:flex;align-items:center;gap:5px;">
+      <button id="chatMuteBtn" onclick="toggleTTS()" title="Activar voz">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>
+      </button>
+      <button id="chatClose" onclick="toggleChat()">✕</button>
+    </div>
   </div>
 
   <!-- API Key ya no es necesaria — el proxy la maneja de forma segura -->
@@ -4553,6 +4665,14 @@ async function exportPDF(){
         rows="1"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"
         oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      <button id="chatMic" onclick="toggleMic()" title="Hablar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
       <button id="chatSend" onclick="sendChat()" title="Enviar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="22" y1="2" x2="11" y2="13"/>
