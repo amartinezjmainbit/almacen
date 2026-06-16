@@ -2429,7 +2429,8 @@ function smartSearch(query){
     'tiene','tienen','llego','llegaron','cuando','donde','cuales','cuantos',
     'cuantas','cual','que','quien','quienes','cual','cuanto','cuanta',
     'que','qué','cuál','cuáles','cuántos','cuántas','cuándo','cómo','dónde',
-    'muéstrame','llegó','hay','más','mas','solo','sólo','me','mi','tu','su']);
+    'muéstrame','llegó','hay','más','mas','solo','sólo','me','mi','tu','su',
+    'ha','lo','le','se','al','yo','ni','no','te','he','ve','todo','toda']);
   const words = norm(query.toLowerCase())
     .replace(/[¿?¡!.,;:]/g,'')
     .replace(/\border(?:en)?\s+de\s+compra\b/g, 'oc')
@@ -2748,6 +2749,37 @@ Fechas disponibles: ${fechas.map(fmtD).join(', ')}`;
     } else {
       relevant = smartSearch(question);
       _lastCtxFilter = {type:'search', value: question};
+      // Garantizar que entidades exactas (proyecto/proveedor) mencionadas en la query
+      // siempre aparezcan en el contexto, independientemente de su ranking en smartSearch.
+      // Workaround: palabras cortas como "ha" o "lo" inflan el score de registros no relacionados
+      // y empujan fuera del top-150 a entradas que solo coinciden por nombre de proyecto.
+      const _nqE = s => (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+      const _qNE = _nqE(question);
+      let _matchProjs = [...new Set(rawData.map(r=>r.proyecto).filter(Boolean))]
+        .filter(p => p.length >= 3 && _qNE.includes(_nqE(p)));
+      const _matchProvs = [...new Set(rawData.map(r=>r.proveedor).filter(Boolean))]
+        .filter(p => p.length >= 5 && _qNE.includes(_nqE(p)));
+      // Si el match exacto no encontró nada, buscar registros cuyo campo proyecto
+      // CONTIENE algún keyword de la query (ej: "SPR" → registros de "26009_SPR_512" y "SPR ARREND")
+      // Nota: se filtra rawData directamente (no lista de proyectos únicos) para evitar
+      // problemas de normalización o comparación de strings en nombres de proyecto complejos.
+      if(!_matchProjs.length && !_matchProvs.length){
+        const _stopKP=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','relacion','datos','registros','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','todo','toda','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito','ha','lo','le','se','al','yo','ni','no','te','he','ve']);
+        const _kwsKP=_qNE.replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_stopKP.has(w));
+        if(_kwsKP.length){
+          const _kwPool=rawData.filter(r=>r.proyecto&&_kwsKP.some(k=>_nqE(r.proyecto).includes(k)));
+          if(_kwPool.length>=1&&_kwPool.length<=300){
+            const _kwSeen=new Set(_kwPool.map(r=>r.entrada));
+            relevant=[..._kwPool,...relevant.filter(r=>!_kwSeen.has(r.entrada))].slice(0,200);
+          }
+        }
+      }
+      if(_matchProjs.length || _matchProvs.length){
+        const _entPool = rawData.filter(r =>
+          _matchProjs.some(p=>r.proyecto===p) || _matchProvs.some(p=>r.proveedor===p));
+        const _seenEnt = new Set(_entPool.map(r=>r.entrada));
+        relevant = [..._entPool, ...relevant.filter(r=>!_seenEnt.has(r.entrada))].slice(0,200);
+      }
       if(!relevant.length) relevant = rawData.slice(0,50);
     }
   }
@@ -2808,6 +2840,13 @@ ${topN(rpEmp,10,'registros')}`;
     const rows = Object.values(byEnt).map(e=>
       `#${e.entrada}|${fmtD(e.fecha)}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|OC:${e.oc||'—'}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
     ).join('\n');
+    // Resumen por proyecto — evita que el modelo confunda atribución cuando un proveedor
+    // trabaja en múltiples proyectos (ej: RESPUESTAS OPTIMAS en 26009_SPR_512 y SPR ARREND)
+    const _byPrEnt={};
+    Object.values(byEnt).forEach(e=>{const p=e.proyecto||'—';_byPrEnt[p]=(_byPrEnt[p]||0)+1;});
+    const _proyBreakdown=Object.keys(_byPrEnt).length>1
+      ?`DISTRIBUCIÓN POR PROYECTO: ${Object.entries(_byPrEnt).map(([p,n])=>`"${p}": ${n} entradas`).join(' | ')}\n`
+      :'';
 
     // Resumen del período para que el modelo NO confunda "pocos registros" con "muestra parcial"
     let periodHeader = '';
@@ -2846,7 +2885,7 @@ Top proveedores del período: ${topPvStr||'—'}
       : detectedDates.length
         ? ` — Período: ${fmtD(detectedDates[0])} al ${fmtD(detectedDates[detectedDates.length-1])}`
         : '';
-    detailSection = `\n\n${periodHeader}=== DETALLE DE ENTRADAS (${Object.keys(byEnt).length} entradas${rangeLabel}) ===
+    detailSection = `\n\n${periodHeader}${_proyBreakdown}=== DETALLE DE ENTRADAS (${Object.keys(byEnt).length} entradas${rangeLabel}) ===
 #Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|OC|Uds|Artículos
 ${rows}`;
   } else {
@@ -3401,7 +3440,7 @@ function buildFilteredPool(q, aiExclTerms=[]){
         // Filtro secundario: keywords de q actual (ej. "proyecto OAJ" en consulta nueva)
         {
           const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
+          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','todo','toda','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto','eso','esa','esos','esas','ese','esto','esta','estos','estas','ello','ellos','ellas']);
           const _exclQ2=new Set(aiExclTerms);
           [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQ2.add(m[1]);
@@ -3540,7 +3579,7 @@ function triggerFilteredReport(useFilter){
         // Si la consulta menciona un proyecto o proveedor específico, conservar solo esos registros
         {
           const _n=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
+          const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','todo','toda','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
           const _ctxV=_n(_lastCtxFilter.value||'');
           const _exclCtx=new Set();
           [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
@@ -3553,7 +3592,7 @@ function triggerFilteredReport(useFilter){
             const _mp=_up.filter(p=>_kw.some(k=>_n(p).includes(k)));
             const _mv=_uv.filter(p=>_kw.some(k=>_n(p).includes(k)));
             if(_mp.length||_mv.length){
-              const _ef=ctxPool.filter(r=>(!_mp.length||_mp.some(p=>r.proyecto===p))&&(!_mv.length||_mv.some(p=>r.proveedor===p)));
+              const _ef=rawData.filter(r=>(!_mp.length||_mp.some(p=>r.proyecto===p))&&(!_mv.length||_mv.some(p=>r.proveedor===p)));
               if(_ef.length) ctxPool=_ef;
             }
           }
@@ -3562,7 +3601,7 @@ function triggerFilteredReport(useFilter){
         // Captura "proyecto OAJ" aunque _lastCtxFilter.value solo diga "ingresos llegado"
         if(ctxPool && ctxPool.length){
           const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
+          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','todo','toda','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto','eso','esa','esos','esas','ese','esto','esta','estos','estas','ello','ellos','ellas']);
           const _exclQtr=new Set();
           [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQtr.add(m[1]);
