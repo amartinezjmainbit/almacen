@@ -3204,12 +3204,13 @@ function applyDescriptionFilters(pool, q, aiFilters=null){
   const exclPatterns = [
     /no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
-    /excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
-    /que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
-    /\bno\s+vengan?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
   ];
   for(const re of exclPatterns){
     let m;
@@ -3347,7 +3348,7 @@ function extractReportOptions(q){
 }
 
 // Determina el conjunto de filas que debe incluir el reporte según el contexto
-function buildFilteredPool(q){
+function buildFilteredPool(q, aiExclTerms=[]){
   const _mD = (f, ds) => f && (ds.includes(f) || ds.includes(normalizeFecha(f)));
   const dates = extractDateFromQuery(q);
   if(dates.length){
@@ -3382,7 +3383,11 @@ function buildFilteredPool(q){
         // Filtro estricto por entidad sobre resultados de smartSearch
         const _n=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
         const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
-        const _kw=_n(_lastCtxFilter.value||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w));
+        const _exclSS=new Set(aiExclTerms);
+        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          let m; const _ssv=_n(_lastCtxFilter.value||''); while((m=re.exec(_ssv))!==null) if(m[1].length>=4) _exclSS.add(m[1]);
+        });
+        const _kw=_n(_lastCtxFilter.value||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w)&&!_exclSS.has(w));
         if(_kw.length){
           const _up=[...new Set(rawData.map(r=>(r.proyecto||'').trim()).filter(Boolean))];
           const _uv=[...new Set(rawData.map(r=>(r.proveedor||'').trim()).filter(Boolean))];
@@ -3397,8 +3402,8 @@ function buildFilteredPool(q){
         {
           const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
           const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
-          const _exclQ2=new Set();
-          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          const _exclQ2=new Set(aiExclTerms);
+          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQ2.add(m[1]);
           });
           const _kw2=_n2(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw2.has(w)&&!_exclQ2.has(w));
@@ -3419,8 +3424,8 @@ function buildFilteredPool(q){
       {
         const _nq=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
         const _swq=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
-        const _exclQb=new Set();
-        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+        const _exclQb=new Set(aiExclTerms);
+        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
           let m; const _qbn=_nq(q||''); while((m=re.exec(_qbn))!==null) if(m[1].length>=4) _exclQb.add(m[1]);
         });
         const _kwq=_nq(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_swq.has(w)&&!_exclQb.has(w));
@@ -3447,8 +3452,8 @@ function buildFilteredPool(q){
     const _nq=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     const _swq=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
     // Excluir del matching de entidades los términos que el usuario quiere eliminar
-    const _exclQ=new Set();
-    [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+    const _exclQ=new Set(aiExclTerms);
+    [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
       let m; const _qn2=_nq(q||''); while((m=re.exec(_qn2))!==null) if(m[1].length>=4) _exclQ.add(m[1]);
     });
     const _kwq=_nq(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_swq.has(w)&&!_exclQ.has(w));
@@ -3538,7 +3543,7 @@ function triggerFilteredReport(useFilter){
           const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
           const _ctxV=_n(_lastCtxFilter.value||'');
           const _exclCtx=new Set();
-          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; while((m=re.exec(_ctxV))!==null) if(m[1].length>=4) _exclCtx.add(m[1]);
           });
           const _kw=_ctxV.replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w)&&!_exclCtx.has(w));
@@ -3559,7 +3564,7 @@ function triggerFilteredReport(useFilter){
           const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
           const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
           const _exclQtr=new Set();
-          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQtr.add(m[1]);
           });
           const _kw2=_n2(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw2.has(w)&&!_exclQtr.has(w));
@@ -3597,10 +3602,11 @@ function triggerFilteredReport(useFilter){
 async function handleReportRequest(q, typingId, precomputedPool=null, reportTitle=null){
   removeTyping(typingId);
 
-  // ── Filtrar datos según el contexto (búsqueda previa, fechas, etc.) ───────
-  const _basePool = precomputedPool !== null ? precomputedPool : buildFilteredPool(q);
-  // Extrae filtros con NLU real (Claude) para cubrir cualquier variante de lenguaje natural
+  // Extrae filtros AI primero: sus excl terms se pasan a buildFilteredPool para evitar
+  // que palabras clave de exclusión contaminen el entity matching y corrompan el pool base.
   const _aiFilters = await extractAIFilters(q);
+  // ── Filtrar datos según el contexto (búsqueda previa, fechas, etc.) ───────
+  const _basePool = precomputedPool !== null ? precomputedPool : buildFilteredPool(q, _aiFilters.excl);
   const pool = applyDescriptionFilters(_basePool, q, _aiFilters);
 
   // ── Opciones de reporte: columnas, ordenamiento, modo detalle ────────────
