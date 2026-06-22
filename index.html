@@ -815,16 +815,6 @@ input[type="date"].fsel::-webkit-calendar-picker-indicator{ filter:invert(1) opa
 }
 @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4);}50%{box-shadow:0 0 0 7px rgba(239,68,68,0);}}
 #chatMic svg{width:16px;height:16px;}
-/* TTS toggle button in header */
-#chatMuteBtn{
-  background:rgba(255,255,255,0.06);border:1px solid #2a3f5f;
-  border-radius:6px;color:#475569;width:26px;height:26px;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:all .2s;
-}
-#chatMuteBtn:hover{color:#f1f5f9;border-color:#6366f1;}
-#chatMuteBtn.tts-on{color:#10b981;border-color:rgba(16,185,129,0.5);}
-#chatMuteBtn svg{width:13px;height:13px;}
 
 /* Mobile chat */
 @media(max-width:768px){
@@ -2705,9 +2695,13 @@ Fechas disponibles: ${fechas.map(fmtD).join(', ')}`;
   }
 
   // Detecta si la pregunta es referencial ("esas entradas", "esos registros", "lo mismo", etc.)
-  const isReferential = /\besas?\b|\besos?\b|\blas mismas?\b|\blos mismos?\b|\blo anterior\b|\bdichas?\b|\bdichos?\b|\besas entradas\b|\besos registros\b|\belabora|genera|haz|crea|muestra|tabla|lista|detalle/i.test(question)
+  // Referencial SOLO si hay pronombre explícito de referencia pasada O verbos de acción sin sujeto propio.
+  // "muestra", "tabla", "lista", "detalle" se eliminaron: son palabras de formato que aparecen en
+  // preguntas nuevas y causaban que Q2 reutilizara el contexto de Q1.
+  const isReferential = /\besas?\b|\besos?\b|\blas mismas?\b|\blos mismos?\b|\blo anterior\b|\blo mismo\b|\bdichas?\b|\bdichos?\b|\besas entradas\b|\besos registros\b|\besos datos\b|\besos resultados\b|\belabora\b|\bgenera\b|\bhazme\b|\bcrea\b/i.test(question)
     && !extractDateFromQuery(question).length
-    && !/pendiente|completa|proveedor|almac[eé]n|proyecto/i.test(question);
+    && !/pendiente|completa|proveedor|almac[eé]n|proyecto|ingram|ferret|comer|aevit|uniform|refac|eqcom|cedis|admon|gen\b/i.test(question)
+    && !/[A-Z0-9]{2,}_[A-Z0-9]{2,}/i.test(question);
 
   // Si es referencial y hay un filtro previo, reutilizarlo
   if(isReferential && _lastCtxFilter){
@@ -2850,37 +2844,54 @@ ${topN(rpEmp,10,'registros')}`;
   if(isRankingQuery){
     // Para rankings el contexto es rankingSection, no registros individuales
   } else if(relevant.length){
-    // Agrupar por entrada — máximo 30 entradas
-    const byEnt = {};
-    relevant.forEach(r=>{
-      if(!byEnt[r.entrada]) byEnt[r.entrada]={
-        entrada:r.entrada, fecha:r.fecha, almacen:r.almacen,
-        estatus:r.estatus, proveedor:r.proveedor, proyecto:r.proyecto,
-        empresa:r.empresa, oc:r.oc, items:[], cantidad:0
-      };
-      byEnt[r.entrada].items.push(r.desc.slice(0,50)+(r.parte?` [${r.parte}]`:'')+` x${r.cantidad}`);
-      byEnt[r.entrada].cantidad += r.cantidad;
-    });
+    // Estrategia de formato según tipo de consulta:
+    // - Búsqueda por palabra clave (artículo): fila por registro → evita que el modelo
+    //   re-interprete qué artículos cuentan y qué cantidades sumar (root cause del bug
+    //   donde solo contaba "Apple iPad 11" e ignoraba "AppleCare+ iPad" del mismo folio).
+    // - Consultas por fecha / estatus: agrupar por entrada (un folio = una fila).
+    const isKeywordSearch = !detectedDates.length && !queryPendiente && !queryCompleta;
 
-    const rows = Object.values(byEnt).map(e=>
-      `#${e.entrada}|${fmtD(e.fecha)}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|OC:${e.oc||'—'}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
-    ).join('\n');
-    // Resumen por proyecto — evita que el modelo confunda atribución cuando un proveedor
-    // trabaja en múltiples proyectos (ej: RESPUESTAS OPTIMAS en 26009_SPR_512 y SPR ARREND)
-    const _byPrEnt={};
-    Object.values(byEnt).forEach(e=>{const p=e.proyecto||'—';_byPrEnt[p]=(_byPrEnt[p]||0)+1;});
-    const _proyBreakdown=Object.keys(_byPrEnt).length>1
-      ?`DISTRIBUCIÓN POR PROYECTO: ${Object.entries(_byPrEnt).map(([p,n])=>`"${p}": ${n} entradas`).join(' | ')}\n`
-      :'';
+    let rows, detailHeader, _proyBreakdown = '';
 
-    // Resumen del período para que el modelo NO confunda "pocos registros" con "muestra parcial"
-    let periodHeader = '';
-    if(_nearestDateFallback){
-      // No había registros para la fecha exacta — se cargó la más cercana disponible
-      const nb = _nearestDateFallback;
-      const pUds  = Math.round(relevant.reduce((s,r)=>s+r.cantidad,0));
-      const pComp = relevant.filter(r=>r.estatus==='COMPLETA').length;
-      periodHeader = `=== AVISO IMPORTANTE ===
+    if(isKeywordSearch){
+      // Fila por registro individual — cada artículo con su propia cantidad
+      const totalUdsR = Math.round(relevant.reduce((s,r)=>s+r.cantidad,0));
+      const byEntU={};
+      relevant.forEach(r=>{if(!byEntU[r.entrada])byEntU[r.entrada]=0;byEntU[r.entrada]+=r.cantidad;});
+      rows = relevant.slice(0,150).map(r=>
+        `#${r.entrada}|${fmtD(r.fecha)}|${r.almacen||'—'}|${r.estatus||'—'}|${(r.proveedor||'').slice(0,30)}|${(r.proyecto||'').slice(0,20)}|OC:${r.oc||'—'}|${Math.round(r.cantidad)}uds|${(r.desc||'').slice(0,50)}${r.parte?` [${r.parte}]`:''}`
+      ).join('\n');
+      detailHeader = `=== ARTÍCULOS ENCONTRADOS — ${relevant.length} registros, ${totalUdsR} unidades totales, ${Object.keys(byEntU).length} entradas únicas ===
+REGLA DE SUMA: cada fila es un registro independiente. Para el total real debes sumar TODAS las filas mostradas — no recalcules a partir del nombre del artículo.
+#Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|OC|Uds|Artículo`;
+    } else {
+      // Agrupar por entrada para consultas de fecha / estatus
+      const byEnt = {};
+      relevant.forEach(r=>{
+        if(!byEnt[r.entrada]) byEnt[r.entrada]={
+          entrada:r.entrada, fecha:r.fecha, almacen:r.almacen,
+          estatus:r.estatus, proveedor:r.proveedor, proyecto:r.proyecto,
+          empresa:r.empresa, oc:r.oc, items:[], cantidad:0
+        };
+        byEnt[r.entrada].items.push(r.desc.slice(0,50)+(r.parte?` [${r.parte}]`:'')+` x${r.cantidad}`);
+        byEnt[r.entrada].cantidad += r.cantidad;
+      });
+      rows = Object.values(byEnt).map(e=>
+        `#${e.entrada}|${fmtD(e.fecha)}|${e.almacen}|${e.estatus}|${e.proveedor.slice(0,30)}|${e.proyecto.slice(0,20)}|OC:${e.oc||'—'}|${Math.round(e.cantidad)}uds|${e.items.slice(0,3).join('; ')}`
+      ).join('\n');
+
+      const _byPrEntObj={};
+      Object.values(byEnt).forEach(e=>{const p=e.proyecto||'—';_byPrEntObj[p]=(_byPrEntObj[p]||0)+1;});
+      _proyBreakdown=Object.keys(_byPrEntObj).length>1
+        ?`DISTRIBUCIÓN POR PROYECTO: ${Object.entries(_byPrEntObj).map(([p,n])=>`"${p}": ${n} entradas`).join(' | ')}\n`
+        :'';
+
+      let periodHeader = '';
+      if(_nearestDateFallback){
+        const nb = _nearestDateFallback;
+        const pUds  = Math.round(relevant.reduce((s,r)=>s+r.cantidad,0));
+        const pComp = relevant.filter(r=>r.estatus==='COMPLETA').length;
+        periodHeader = `=== AVISO IMPORTANTE ===
 El usuario preguntó por el período ${fmtD(nb.requested)}.
 NO HAY REGISTROS para ${fmtD(nb.requested)}.
 Se han cargado automáticamente los registros de la fecha MÁS CERCANA DISPONIBLE: ${fmtD(nb.found)}.
@@ -2891,28 +2902,30 @@ INSTRUCCIÓN OBLIGATORIA:
 2. Indica que a continuación se muestran los datos de la fecha más cercana disponible: ${fmtD(nb.found)}.
 3. NUNCA digas que ${fmtD(nb.found)} es el mismo día de la semana que el usuario mencionó para ${fmtD(nb.requested)}.
 `;
-    } else if(detectedDates.length){
-      const pUds  = Math.round(relevant.reduce((s,r)=>s+r.cantidad,0));
-      const pComp = relevant.filter(r=>r.estatus==='COMPLETA').length;
-      const pProv = {};
-      relevant.forEach(r=>{if(r.proveedor)pProv[r.proveedor]=(pProv[r.proveedor]||0)+1;});
-      const topPvStr = Object.entries(pProv).sort((a,b)=>b[1]-a[1]).slice(0,5)
-        .map(([p,n])=>`${p}(${n}reg)`).join(', ');
-      periodHeader = `=== RESUMEN DEL PERÍODO ${fmtD(detectedDates[0])} AL ${fmtD(detectedDates[detectedDates.length-1])} ===
+      } else if(detectedDates.length){
+        const pUds  = Math.round(relevant.reduce((s,r)=>s+r.cantidad,0));
+        const pComp = relevant.filter(r=>r.estatus==='COMPLETA').length;
+        const pProv = {};
+        relevant.forEach(r=>{if(r.proveedor)pProv[r.proveedor]=(pProv[r.proveedor]||0)+1;});
+        const topPvStr = Object.entries(pProv).sort((a,b)=>b[1]-a[1]).slice(0,5)
+          .map(([p,n])=>`${p}(${n}reg)`).join(', ');
+        periodHeader = `=== RESUMEN DEL PERÍODO ${fmtD(detectedDates[0])} AL ${fmtD(detectedDates[detectedDates.length-1])} ===
 DATOS COMPLETOS — esta es la totalidad de registros para ese período, no una muestra.
 Entradas únicas: ${Object.keys(byEnt).length} | Registros: ${relevant.length} | Unidades: ${pUds}
 Estatus: ${pComp} COMPLETA, ${relevant.length-pComp} PENDIENTE(S)
 Top proveedores del período: ${topPvStr||'—'}
 `;
+      }
+      const rangeLabel = _nearestDateFallback
+        ? ` — Fecha más cercana: ${fmtD(_nearestDateFallback.found)} (pedido: ${fmtD(_nearestDateFallback.requested)})`
+        : detectedDates.length
+          ? ` — Período: ${fmtD(detectedDates[0])} al ${fmtD(detectedDates[detectedDates.length-1])}`
+          : '';
+      detailHeader = `${periodHeader}${_proyBreakdown}=== DETALLE DE ENTRADAS (${Object.keys(byEnt).length} entradas${rangeLabel}) ===
+#Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|OC|Uds|Artículos`;
     }
-    const rangeLabel = _nearestDateFallback
-      ? ` — Fecha más cercana: ${fmtD(_nearestDateFallback.found)} (pedido: ${fmtD(_nearestDateFallback.requested)})`
-      : detectedDates.length
-        ? ` — Período: ${fmtD(detectedDates[0])} al ${fmtD(detectedDates[detectedDates.length-1])}`
-        : '';
-    detailSection = `\n\n${periodHeader}${_proyBreakdown}=== DETALLE DE ENTRADAS (${Object.keys(byEnt).length} entradas${rangeLabel}) ===
-#Entrada|Fecha|Almacén|Estatus|Proveedor|Proyecto|OC|Uds|Artículos
-${rows}`;
+
+    detailSection = `\n\n${detailHeader}\n${rows}`;
   } else {
     if(detectedDates.length){
       // El usuario preguntó por fechas específicas pero no hay registros para esas fechas
@@ -3269,7 +3282,7 @@ function applyDescriptionFilters(pool, q, aiFilters=null){
     /no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
-    /\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
+    /\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,
     /que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
     /\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,
@@ -3371,9 +3384,10 @@ function extractReportOptions(q){
 
   // ── Columnas solicitadas ─────────────────────────────────────────────────
   // Reconoce: "la tabla debe contener X,Y", "con columnas X,Y", "solo X,Y",
-  // "solo quiero ver X,Y", "nada más X,Y", "que tenga X,Y", "muéstrame solo X,Y"
+  // "solo quiero ver X,Y", "nada más X,Y", "que tenga X,Y", "muéstrame solo X,Y",
+  // "pero con la X, Y y Z", "con la X, Y y Z" (sin necesitar la palabra "columnas")
   let columns = null;
-  const colTrigger = qn.match(/(?:la\s+tabla\s+(?:debe\s+)?(?:contener|incluir|tener)|con\s+(?:las?\s+)?columnas?|con\s+(?:los?\s+)?campos?|(?:solo|solamente|unicamente|nada\s+mas)\s+(?:quiero\s+(?:ver\s+)?|ver\s+)?(?:la\s+|las\s+|los\s+|el\s+)?(?:columnas?\s+|campos?\s+)?|(?:muestra(?:me)?|muestre)\s+(?:solo\s+)?(?:la\s+|las\s+|los\s+)?|que\s+(?:solo\s+)?(?:tenga|contenga|incluya)\s+(?:la\s+|las\s+|los\s+)?|(?:necesito\s+)?que\s+venga[n]?\s+(?:la\s+|las\s+|los\s+|el\s+)?)\s*[,:]?\s*(.+?)(?:\.\s|$)/);
+  const colTrigger = qn.match(/(?:la\s+tabla\s+(?:debe\s+)?(?:contener|incluir|tener)|con\s+(?:las?\s+)?columnas?|con\s+(?:los?\s+)?campos?|(?:solo|solamente|unicamente|nada\s+mas)\s+(?:quiero\s+(?:ver\s+)?|ver\s+)?(?:la\s+|las\s+|los\s+|el\s+)?(?:columnas?\s+|campos?\s+)?|(?:muestra(?:me)?|muestre)\s+(?:solo\s+)?(?:la\s+|las\s+|los\s+)?|que\s+(?:solo\s+)?(?:tenga|contenga|incluya)\s+(?:la\s+|las\s+|los\s+)?|(?:necesito\s+)?que\s+venga[n]?\s+(?:la\s+|las\s+|los\s+|el\s+)?|(?:pero\s+)?con\s+(?:la\s+|las\s+|el\s+|los\s+))\s*[,:]?\s*(.+?)(?:\.\s|$)/);
   if(colTrigger){
     const txt = colTrigger[1];
     const found = [];
@@ -3448,7 +3462,7 @@ function buildFilteredPool(q, aiExclTerms=[]){
         const _n=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
         const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
         const _exclSS=new Set(aiExclTerms);
-        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
           let m; const _ssv=_n(_lastCtxFilter.value||''); while((m=re.exec(_ssv))!==null) if(m[1].length>=4) _exclSS.add(m[1]);
         });
         const _kw=_n(_lastCtxFilter.value||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w)&&!_exclSS.has(w));
@@ -3465,9 +3479,9 @@ function buildFilteredPool(q, aiExclTerms=[]){
         // Filtro secundario: keywords de q actual (ej. "proyecto OAJ" en consulta nueva)
         {
           const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','todo','toda','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto','eso','esa','esos','esas','ese','esto','esta','estos','estas','ello','ellos','ellas']);
+          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','todo','toda','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','menos','contar','contando','excepto','eso','esa','esos','esas','ese','esto','esta','estos','estas','ello','ellos','ellas']);
           const _exclQ2=new Set(aiExclTerms);
-          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQ2.add(m[1]);
           });
           const _kw2=_n2(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw2.has(w)&&!_exclQ2.has(w));
@@ -3489,7 +3503,7 @@ function buildFilteredPool(q, aiExclTerms=[]){
         const _nq=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
         const _swq=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
         const _exclQb=new Set(aiExclTerms);
-        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+        [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
           let m; const _qbn=_nq(q||''); while((m=re.exec(_qbn))!==null) if(m[1].length>=4) _exclQb.add(m[1]);
         });
         const _kwq=_nq(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_swq.has(w)&&!_exclQb.has(w));
@@ -3517,7 +3531,7 @@ function buildFilteredPool(q, aiExclTerms=[]){
     const _swq=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto']);
     // Excluir del matching de entidades los términos que el usuario quiere eliminar
     const _exclQ=new Set(aiExclTerms);
-    [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+    [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
       let m; const _qn2=_nq(q||''); while((m=re.exec(_qn2))!==null) if(m[1].length>=4) _exclQ.add(m[1]);
     });
     const _kwq=_nq(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_swq.has(w)&&!_exclQ.has(w));
@@ -3604,10 +3618,10 @@ function triggerFilteredReport(useFilter){
         // Si la consulta menciona un proyecto o proveedor específico, conservar solo esos registros
         {
           const _n=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','todo','toda','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito']);
+          const _sw=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','muestrame','tiene','tienen','han','relacion','datos','registros','ingresos','ingresos','llegado','llegados','llegaron','cuantos','cuantas','todos','todas','todo','toda','tabla','lista','muestra','detalle','resumen','informacion','quiero','necesito','menos','contar','contando']);
           const _ctxV=_n(_lastCtxFilter.value||'');
           const _exclCtx=new Set();
-          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; while((m=re.exec(_ctxV))!==null) if(m[1].length>=4) _exclCtx.add(m[1]);
           });
           const _kw=_ctxV.replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw.has(w)&&!_exclCtx.has(w));
@@ -3621,14 +3635,21 @@ function triggerFilteredReport(useFilter){
               if(_ef.length) ctxPool=_ef;
             }
           }
+          // Excluir del pool los registros cuyo proveedor o descripción coincida con
+          // las palabras excluidas (ej: "sin uniformes" → quita UNIFORMES INDUSTRIALES...)
+          if(ctxPool && ctxPool.length && _exclCtx.size){
+            const _ew=[..._exclCtx];
+            const _pf=ctxPool.filter(r=>!_ew.some(w=>_n(r.proveedor||'').includes(w)||_n(r.desc||'').includes(w)));
+            if(_pf.length) ctxPool=_pf;
+          }
         }
         // Filtro adicional: keywords de la consulta ACTUAL (q)
         // Captura "proyecto OAJ" aunque _lastCtxFilter.value solo diga "ingresos llegado"
         if(ctxPool && ctxPool.length){
           const _n2=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','todo','toda','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','excepto','eso','esa','esos','esas','ese','esto','esta','estos','estas','ello','ellos','ellas']);
+          const _sw2=new Set(['el','la','los','las','de','del','en','que','hay','me','un','una','es','si','ya','fue','con','por','para','como','dime','dame','todos','todas','todo','toda','tabla','lista','muestra','resumen','quiero','necesito','reporte','informe','pdf','ingresos','ingreso','datos','registros','bienes','proyecto','proveedor','cantidad','descripcion','fecha','numero','parte','orden','compra','almacen','formato','considera','solamente','incluyendo','incluidas','incluidos','ordenados','descendente','solo','hazme','llegado','llegados','llegaron','relacion','informacion','cuantos','cuantas','sin','menos','contar','contando','excepto','eso','esa','esos','esas','ese','esto','esta','estos','estas','ello','ellos','ellas']);
           const _exclQtr=new Set();
-          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bsin\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
+          [/no\s+consider[ae]s?\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excepto\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/excluy(?:endo|e[sn]?)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\b(?:sin|menos)\s+(?:\w+\s+){0,2}([a-zà-ü]{4,})/g,/que\s+no\s+(?:vengan?\s+|sean?\s+|incluyan?\s+|haya\s+|contenga[n]?\s+)?(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:vengan?\s+|contenga[n]?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:incluyas?\s+|pongas?\s+|metas?\s+|traigas?\s+)(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/\bno\s+(?:quiero|deseo)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g,/(?:omit(?:e|es|iendo)|descart(?:a|as|ando)|quit(?:a|as|ando)|elimin(?:a|as|ando)|ignor(?:a|as|ando)|fuera\s+de|nada\s+de)\s+(?:los?\s+|las?\s+)?([a-zà-ü]+)/g].forEach(re=>{
             let m; const _q2n=_n2(q||''); while((m=re.exec(_q2n))!==null) if(m[1].length>=4) _exclQtr.add(m[1]);
           });
           const _kw2=_n2(q||'').replace(/[¿?¡!.,;:]/g,'').split(/\s+/).filter(w=>w.length>=3&&!_sw2.has(w)&&!_exclQtr.has(w));
@@ -3641,6 +3662,12 @@ function triggerFilteredReport(useFilter){
               const _ef2=rawData.filter(r=>(!_mp2.length||_mp2.some(p=>r.proyecto===p))&&(!_mv2.length||_mv2.some(p=>r.proveedor===p)));
               if(_ef2.length) ctxPool=_ef2;
             }
+          }
+          // Misma exclusión aplicada al query actual q
+          if(ctxPool && ctxPool.length && _exclQtr.size){
+            const _ew2=[..._exclQtr];
+            const _pf2=ctxPool.filter(r=>!_ew2.some(w=>_n2(r.proveedor||'').includes(w)||_n2(r.desc||'').includes(w)));
+            if(_pf2.length) ctxPool=_pf2;
           }
         }
       } else if(_lastCtxFilter.type==='pendiente'){
@@ -3657,13 +3684,15 @@ function triggerFilteredReport(useFilter){
       else titleForPdf = buildPdfTitle(_lastCtxFilter.value||'', ctxPool||[]);
     }
     // Usar el query original del contexto para que extractAIFilters y applyDescriptionFilters
-    // procesen las exclusiones/columnas que el usuario especificó en la consulta anterior
+    // procesen las exclusiones/columnas que el usuario especificó en la consulta anterior.
+    // Las columnas de la consulta ACTUAL tienen prioridad sobre las del contexto anterior.
     const _filterQ = (_lastCtxFilter && _lastCtxFilter.value) ? _lastCtxFilter.value : q;
-    handleReportRequest(_filterQ, typingId, ctxPool, titleForPdf).then(()=>{ document.getElementById('chatSend').disabled=false; });
+    const _currentColOpts = extractReportOptions(q);
+    handleReportRequest(_filterQ, typingId, ctxPool, titleForPdf, _currentColOpts.columns || null).then(()=>{ document.getElementById('chatSend').disabled=false; });
   }
 }
 
-async function handleReportRequest(q, typingId, precomputedPool=null, reportTitle=null){
+async function handleReportRequest(q, typingId, precomputedPool=null, reportTitle=null, overrideColumns=null){
   removeTyping(typingId);
 
   // Extrae filtros AI primero: sus excl terms se pasan a buildFilteredPool para evitar
@@ -3675,6 +3704,7 @@ async function handleReportRequest(q, typingId, precomputedPool=null, reportTitl
 
   // ── Opciones de reporte: columnas, ordenamiento, modo detalle ────────────
   const reportOptions = extractReportOptions(q);
+  if(overrideColumns && overrideColumns.length >= 2) reportOptions.columns = overrideColumns;
   if(reportOptions.sortField){
     const sf = reportOptions.sortField;
     pool.sort((a,b)=>{
@@ -3735,7 +3765,6 @@ async function handleReportRequest(q, typingId, precomputedPool=null, reportTitl
 
 /* ── Enviar mensaje ── */
 async function sendChat(){
-  window.speechSynthesis && window.speechSynthesis.cancel();
   if(!rawData.length){
     appendMsg('bot','📂 Primero carga tu archivo Excel para poder consultar los datos.');
     return;
@@ -3890,15 +3919,20 @@ Muestra la entrada asociada con todos sus detalles: fecha, almacén, proveedor, 
 📈 RANKINGS Y COMPARATIVOS ("¿cuál es el top proveedor?", "¿qué proyecto tiene más unidades?"):
 Presenta lista ordenada con números concretos.
 
-📊 TABLAS ("elabora una tabla", "muéstrame en tabla", "haz una lista con columnas"):
-Genera una tabla Markdown con columnas relevantes. Usa SOLO los datos del contexto. Ejemplo:
-| #Entrada | Fecha | Almacén | Proveedor | Artículos | Uds |
-|----------|-------|---------|-----------|-----------|-----|
-| #29973  | 01/06 | GEN     | INGRAM    | HP S3 Pro | 2,531 |
+📊 TABLAS Y REPORTES ("elabora una tabla", "dame un reporte", "muéstrame en tabla"):
+REGLA DE COLUMNAS — aplica siempre que se genere una tabla:
+• Si el usuario NO especifica columnas → usa SIEMPRE las 8 columnas completas por defecto:
+  | #Entrada | Fecha | Almacén | Proveedor | Descripción | Proyecto | Uds | Estatus |
+  |----------|-------|---------|-----------|-------------|---------|-----|---------|
+• Si el usuario SÍ especifica columnas ("solo el proveedor y unidades", "solo descripción y fecha") → usa ÚNICAMENTE las columnas que pidió, sin agregar ninguna extra.
+Usa SOLO los datos del contexto. Ejemplo tabla completa:
+| #Entrada | Fecha | Almacén | Proveedor | Descripción | Proyecto | Uds | Estatus |
+|----------|-------|---------|-----------|-------------|---------|-----|---------|
+| #29973  | 01/06/2026 | GEN | INGRAM MICRO | HP S3 Pro | 26038_OAJ_153 | 2,531 | COMPLETA |
 
 ═══ FORMATO ═══
 • Español mexicano, tono profesional y directo
-• Tablas Markdown cuando el usuario las pida explícitamente
+• Tablas Markdown cuando el usuario pida un reporte, tabla, o lista con columnas
 • Máximo 4 párrafos cortos o una lista con bullets — no escribas ensayos
 • Emojis ocasionales solo en encabezados de sección
 • Si hay múltiples entradas, usa lista numerada o tabla según el pedido
@@ -3941,7 +3975,6 @@ ${context}`;
 
     removeTyping(typingId);
     appendMsg('bot', reply);
-    speakReply(reply);
   }catch(err){
     removeTyping(typingId);
     appendMsg('bot', `❌ Error: ${err.message}. Verifica tu API Key y que tengas crédito disponible.`);
@@ -4051,12 +4084,8 @@ function sendSuggestion(btn){
 
 /* ── UI helpers ── */
 // ── VOICE (Web Speech API) ──────────────────────────────────────────────────
-let _ttsEnabled = false;
 let _recognition = null;
 let _isListening = false;
-
-const _svgSpkOn  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
-const _svgSpkOff = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
 
 function initVoice(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -4098,33 +4127,6 @@ function toggleMic(){
   if(_isListening){ _recognition.stop(); } else { _recognition.start(); }
 }
 
-function speakReply(text){
-  if(!_ttsEnabled || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const clean = text.replace(/[*_~`#]/g,'').replace(/\n+/g,'. ').trim();
-  const utt = new SpeechSynthesisUtterance(clean);
-  utt.lang = 'es-MX';
-  utt.rate = 1.05;
-  const voices = window.speechSynthesis.getVoices();
-  const esVoice = voices.find(v => v.lang.startsWith('es'));
-  if(esVoice) utt.voice = esVoice;
-  window.speechSynthesis.speak(utt);
-}
-
-function toggleTTS(){
-  _ttsEnabled = !_ttsEnabled;
-  const btn = document.getElementById('chatMuteBtn');
-  if(_ttsEnabled){
-    btn.classList.add('tts-on');
-    btn.title = 'Silenciar voz';
-    btn.innerHTML = _svgSpkOn;
-  } else {
-    btn.classList.remove('tts-on');
-    btn.title = 'Activar voz';
-    btn.innerHTML = _svgSpkOff;
-    window.speechSynthesis && window.speechSynthesis.cancel();
-  }
-}
 // ────────────────────────────────────────────────────────────────────────────
 
 function appendMsg(role, text){
@@ -4625,12 +4627,6 @@ async function exportPDF(){
       Asistente Almacén
     </div>
     <div style="display:flex;align-items:center;gap:5px;">
-      <button id="chatMuteBtn" onclick="toggleTTS()" title="Activar voz">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
-        </svg>
-      </button>
       <button id="chatClose" onclick="toggleChat()">✕</button>
     </div>
   </div>
